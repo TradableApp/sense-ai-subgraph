@@ -1,5 +1,7 @@
 # SenseAI Subgraph
 
+[![License](https://img.shields.io/github/license/TradableApp/sense-ai-subgraph.svg)](./LICENSE)
+
 This subgraph indexes the **SenseAI** smart contracts (Agent & Escrow) on Base (Ethereum L2). It provides the data layer for the SenseAI dApp, allowing users to fetch their conversation history and usage limits efficiently.
 
 ## 📋 Prerequisites
