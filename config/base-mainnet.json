@@ -1,0 +1,11 @@
+{
+  "network": "base",
+  "EVMAIAgent": {
+    "address": "0xYOUR_MAINNET_PROXY_ADDRESS",
+    "startBlock": 12345678
+  },
+  "EVMAIAgentEscrow": {
+    "address": "0xYOUR_MAINNET_ESCROW_PROXY_ADDRESS",
+    "startBlock": 12345678
+  }
+}

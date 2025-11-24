@@ -1,0 +1,56 @@
+# Graph CLI generated artifacts
+build/
+generated/
+# Important: We ignore subgraph.yaml because we generate it from subgraph.template.yaml
+subgraph.yaml
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# --- Local Development Data (Docker) ---
+# These folders are created by docker-compose to store chain data.
+# NEVER commit these.
+data/
+ipfs/
+postgres/
+
+# dotenv environment variables file
+.env
+.env.*
+
+# Testing
+coverage
+coverage.json
+
+# Typechain
+typechain
+typechain-types
+
+# Hardhat files
+cache
+
+# MacOS metadata files
+.DS_Store
+._*
+
+# VS Code directories
+.vscode/
+*.code-workspace
+
+# --- Testing ---
+coverage/
+matchstick-coverage.xml

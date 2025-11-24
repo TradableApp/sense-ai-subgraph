@@ -1,0 +1,35 @@
+.
+├── .gitignore
+├── abis
+│   ├── EVMAIAgent.json
+│   └── EVMAIAgentEscrow.json
+├── config
+│   ├── base-mainnet.json
+│   ├── base-sepolia.json
+│   └── localnet.json
+├── docker-compose.yml
+├── file-structure.txt
+├── generated
+│   ├── EVMAIAgent
+│   │   └── EVMAIAgent.ts
+│   ├── EVMAIAgentEscrow
+│   │   └── EVMAIAgentEscrow.ts
+│   └── schema.ts
+├── networks.json
+├── package-lock.json
+├── package.json
+├── README.md
+├── schema.graphql
+├── sense-ai-subgraph.code-workspace
+├── src
+│   ├── evmai-agent-escrow.ts
+│   └── evmai-agent.ts
+├── subgraph.template.yaml
+├── subgraph.yaml
+├── tests
+│   ├── evmai-agent-utils.ts
+│   └── evmai-agent.test.ts
+├── tsconfig.json
+└── yarn.lock
+
+8 directories, 25 files

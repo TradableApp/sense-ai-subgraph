@@ -1,0 +1,72 @@
+specVersion: 1.3.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  # ---------------------------------------------------------
+  # Source 1: AI Agent (Chat History & Logic)
+  # ---------------------------------------------------------
+  - kind: ethereum
+    name: EVMAIAgent
+    network: { { network } }
+    source:
+      address: "{{ EVMAIAgent.address }}"
+      abi: EVMAIAgent
+      startBlock: { { EVMAIAgent.startBlock } }
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Conversation
+        - Message
+        - SearchDelta
+      abis:
+        - name: EVMAIAgent
+          file: ./abis/EVMAIAgent.json
+      eventHandlers:
+        - event: ConversationAdded(indexed address,indexed uint256,string,string)
+          handler: handleConversationAdded
+        - event: PromptMessageAdded(indexed uint256,indexed uint256,string)
+          handler: handlePromptMessageAdded
+        - event: AnswerMessageAdded(indexed uint256,indexed uint256,string)
+          handler: handleAnswerMessageAdded
+        - event: ConversationBranched(indexed address,indexed uint256,uint256,uint256,string,string)
+          handler: handleConversationBranched
+        - event: ConversationMetadataUpdated(indexed uint256,string)
+          handler: handleConversationMetadataUpdated
+        - event: SearchIndexDeltaAdded(indexed uint256,string)
+          handler: handleSearchIndexDeltaAdded
+      file: ./src/evmai-agent.ts
+
+  # ---------------------------------------------------------
+  # Source 2: Escrow (Payments & Subscriptions)
+  # ---------------------------------------------------------
+  - kind: ethereum
+    name: EVMAIAgentEscrow
+    network: { { network } }
+    source:
+      address: "{{ EVMAIAgentEscrow.address }}"
+      abi: EVMAIAgentEscrow
+      startBlock: { { EVMAIAgentEscrow.startBlock } }
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Payment
+        - Subscription
+      abis:
+        - name: EVMAIAgentEscrow
+          file: ./abis/EVMAIAgentEscrow.json
+      eventHandlers:
+        - event: PaymentEscrowed(indexed uint256,indexed address,indexed uint256)
+          handler: handlePaymentEscrowed
+        - event: PaymentFinalized(indexed uint256)
+          handler: handlePaymentFinalized
+        - event: PaymentRefunded(indexed uint256)
+          handler: handlePaymentRefunded
+        - event: SubscriptionSet(indexed address,indexed uint256,indexed uint256)
+          handler: handleSubscriptionSet
+      file: ./src/evmai-agent-escrow.ts

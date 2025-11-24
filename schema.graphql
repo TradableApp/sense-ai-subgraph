@@ -1,0 +1,56 @@
+# --- Chat Entities ---
+
+# Mutable: Timestamps and Metadata CIDs update over time
+type Conversation @entity(immutable: false) {
+  id: ID!
+  owner: Bytes!
+  conversationId: BigInt!
+  conversationCID: String!
+  conversationMetadataCID: String!
+  lastMessageCreatedAt: BigInt!
+  createdAtBlock: BigInt!
+  isDeleted: Boolean!
+  messages: [Message!]! @derivedFrom(field: "conversation")
+  branchedFrom: Conversation
+}
+
+# Immutable: Once a message is sent, it is never altered on-chain
+type Message @entity(immutable: true) {
+  id: ID!
+  messageId: BigInt!
+  conversation: Conversation!
+  messageCID: String!
+  role: String!
+  createdAt: BigInt!
+  transactionHash: String!
+  searchDelta: SearchDelta
+}
+
+# Immutable: Search keywords are static for a specific message
+type SearchDelta @entity(immutable: true) {
+  id: ID!
+  message: Message!
+  searchDeltaCID: String!
+}
+
+# --- Financial Entities ---
+
+# Mutable: Status changes from PENDING -> COMPLETE
+type Payment @entity(immutable: false) {
+  id: ID! # escrowId
+  user: Bytes!
+  amount: BigInt!
+  status: String! # "PENDING", "COMPLETE", "REFUNDED"
+  createdAt: BigInt!
+  finalizedAt: BigInt
+  txHash: String!
+}
+
+# Mutable: Allowance and Expiry update over time
+type Subscription @entity(immutable: false) {
+  id: ID! # user address
+  user: Bytes!
+  allowance: BigInt!
+  expiresAt: BigInt!
+  updatedAt: BigInt!
+}
