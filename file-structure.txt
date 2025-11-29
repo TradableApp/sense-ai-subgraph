@@ -5,7 +5,7 @@
 │   └── EVMAIAgentEscrow.json
 ├── config
 │   ├── base-mainnet.json
-│   ├── base-sepolia.json
+│   ├── base-testnet.json
 │   └── localnet.json
 ├── docker-compose.yml
 ├── file-structure.txt

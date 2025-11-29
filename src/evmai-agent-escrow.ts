@@ -3,9 +3,9 @@ import {
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
-  SubscriptionSet,
+  SpendingLimitSet,
 } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
-import { Payment, Subscription } from "../generated/schema";
+import { Payment, SpendingLimit } from "../generated/schema";
 
 export function handlePaymentEscrowed(event: PaymentEscrowed): void {
   let payment = new Payment(event.params.escrowId.toString());
@@ -35,9 +35,9 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
   }
 }
 
-export function handleSubscriptionSet(event: SubscriptionSet): void {
+export function handleSpendingLimitSet(event: SpendingLimitSet): void {
   let id = event.params.user.toHexString();
-  let sub = new Subscription(id);
+  let sub = new SpendingLimit(id);
   sub.user = event.params.user;
   sub.allowance = event.params.allowance;
   sub.expiresAt = event.params.expiresAt;

@@ -4,7 +4,7 @@
   "scripts": {
     "// --- GENERATION ---": "---",
     "prepare:localnet": "mustache config/localnet.json subgraph.template.yaml > subgraph.yaml",
-    "prepare:testnet": "mustache config/base-sepolia.json subgraph.template.yaml > subgraph.yaml",
+    "prepare:testnet": "mustache config/base-testnet.json subgraph.template.yaml > subgraph.yaml",
     "prepare:mainnet": "mustache config/base-mainnet.json subgraph.template.yaml > subgraph.yaml",
     "codegen": "graph codegen",
     "build": "graph build",
@@ -13,8 +13,8 @@
     "remove-local": "graph remove --node http://localhost:8020/ sense-ai",
     "deploy-local": "npm run prepare:local && npm run codegen && npm run build && graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 sense-ai",
     "// --- STUDIO DEPLOYMENT ---": "---",
-    "deploy:testnet": "npm run prepare:testnet && npm run codegen && npm run build && graph deploy --studio sense-ai-testnet",
-    "deploy:mainnet": "npm run prepare:mainnet && npm run codegen && npm run build && graph deploy --studio sense-ai",
+    "deploy:testnet": "npm run prepare:testnet && npm run codegen && npm run build && graph deploy sense-ai-testnet",
+    "deploy:mainnet": "npm run prepare:mainnet && npm run codegen && npm run build && graph deploy sense-ai",
     "// --- TESTING ---": "---",
     "test": "graph test"
   },

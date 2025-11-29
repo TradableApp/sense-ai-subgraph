@@ -9,11 +9,11 @@ dataSources:
   # ---------------------------------------------------------
   - kind: ethereum
     name: EVMAIAgent
-    network: { { network } }
+    network: {{ network }}
     source:
       address: "{{ EVMAIAgent.address }}"
       abi: EVMAIAgent
-      startBlock: { { EVMAIAgent.startBlock } }
+      startBlock: {{ EVMAIAgent.startBlock }}
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -41,22 +41,22 @@ dataSources:
       file: ./src/evmai-agent.ts
 
   # ---------------------------------------------------------
-  # Source 2: Escrow (Payments & Subscriptions)
+  # Source 2: Escrow (Payments & Spending Limits)
   # ---------------------------------------------------------
   - kind: ethereum
     name: EVMAIAgentEscrow
-    network: { { network } }
+    network: {{ network }}
     source:
       address: "{{ EVMAIAgentEscrow.address }}"
       abi: EVMAIAgentEscrow
-      startBlock: { { EVMAIAgentEscrow.startBlock } }
+      startBlock: {{ EVMAIAgentEscrow.startBlock }}
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
       language: wasm/assemblyscript
       entities:
         - Payment
-        - Subscription
+        - SpendingLimit
       abis:
         - name: EVMAIAgentEscrow
           file: ./abis/EVMAIAgentEscrow.json
@@ -67,6 +67,6 @@ dataSources:
           handler: handlePaymentFinalized
         - event: PaymentRefunded(indexed uint256)
           handler: handlePaymentRefunded
-        - event: SubscriptionSet(indexed address,indexed uint256,indexed uint256)
-          handler: handleSubscriptionSet
+        - event: SpendingLimitSet(indexed address,indexed uint256,indexed uint256)
+          handler: handleSpendingLimitSet
       file: ./src/evmai-agent-escrow.ts

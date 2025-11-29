@@ -47,7 +47,7 @@ type Payment @entity(immutable: false) {
 }
 
 # Mutable: Allowance and Expiry update over time
-type Subscription @entity(immutable: false) {
+type SpendingLimit @entity(immutable: false) {
   id: ID! # user address
   user: Bytes!
   allowance: BigInt!

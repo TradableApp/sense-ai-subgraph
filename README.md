@@ -19,7 +19,7 @@ This project uses **Mustache** templates to manage multi-network deployments. DO
 - **Template:** `subgraph.template.yaml` (The structure)
 - **Configs:**
   - `config/localhost.json` (Local Hardhat)
-  - `config/base-sepolia.json` (Testnet)
+  - `config/base-testnet.json` (Testnet)
   - `config/base-mainnet.json` (Production)
 
 ## 🚀 Deployment Workflows
@@ -63,11 +63,11 @@ Deploys to **The Graph Studio** using the slug `sense-ai-testnet`.
     Get your Deploy Key from the dashboard.
 
     ```bash
-    graph auth --studio <YOUR_DEPLOY_KEY>
+    graph auth <YOUR_DEPLOY_KEY>
     ```
 
 3.  **Deploy:**
-    This script compiles the code using `config/base-sepolia.json` and pushes it to the Studio.
+    This script compiles the code using `config/base-testnet.json` and pushes it to the Studio.
 
     ```bash
     npm run deploy:testnet
@@ -94,7 +94,7 @@ Deploys the production version using the slug **`sense-ai`**.
     (Same as Testnet if using Studio)
 
     ```bash
-    graph auth --studio <YOUR_DEPLOY_KEY>
+    graph auth <YOUR_DEPLOY_KEY>
     ```
 
 3.  **Deploy:**
@@ -113,6 +113,6 @@ Deploys the production version using the slug **`sense-ai`**.
 - `schema.graphql`: The database schema definition.
 - `src/`: AssemblyScript mapping logic.
   - `evmai-agent.ts`: Handles chat history events.
-  - `evmai-agent-escrow.ts`: Handles payments and subscriptions.
+  - `evmai-agent-escrow.ts`: Handles payments and spending limits.
 - `subgraph.template.yaml`: The master configuration template.
 - `tests/`: Unit tests for mapping logic (`npm run test`).
