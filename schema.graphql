@@ -11,6 +11,7 @@ type Conversation @entity(immutable: false) {
   createdAtBlock: BigInt!
   isDeleted: Boolean!
   messages: [Message!]! @derivedFrom(field: "conversation")
+  promptRequests: [PromptRequest!]! @derivedFrom(field: "conversation")
   branchedFrom: Conversation
 }
 
@@ -31,6 +32,22 @@ type SearchDelta @entity(immutable: true) {
   id: ID!
   message: Message!
   searchDeltaCID: String!
+}
+
+# --- Prompt Request (For Cancelled/Pending History) ---
+
+# This stores the raw intent before it becomes a permanent Message.
+type PromptRequest @entity(immutable: false) {
+  id: ID! # This will be the answerMessageId
+  promptMessageId: BigInt! # Stored for frontend reference
+  conversation: Conversation!
+  user: Bytes!
+  encryptedPayload: Bytes!
+  isCancelled: Boolean!
+  isAnswered: Boolean!
+  isRefunded: Boolean!
+  createdAt: BigInt!
+  transactionHash: String!
 }
 
 # --- Financial Entities ---

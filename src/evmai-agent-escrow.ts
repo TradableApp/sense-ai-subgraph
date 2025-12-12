@@ -1,11 +1,17 @@
-import { BigInt } from "@graphprotocol/graph-ts";
+import { BigInt, store } from "@graphprotocol/graph-ts";
 import {
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
   SpendingLimitSet,
+  SpendingLimitCancelled,
 } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
-import { Payment, SpendingLimit } from "../generated/schema";
+import {
+  Payment,
+  SpendingLimit,
+  PromptRequest,
+  Conversation,
+} from "../generated/schema";
 
 export function handlePaymentEscrowed(event: PaymentEscrowed): void {
   let payment = new Payment(event.params.escrowId.toString());
@@ -27,20 +33,44 @@ export function handlePaymentFinalized(event: PaymentFinalized): void {
 }
 
 export function handlePaymentRefunded(event: PaymentRefunded): void {
+  // 1. Update Payment Entity
   let payment = Payment.load(event.params.escrowId.toString());
   if (payment) {
     payment.status = "REFUNDED";
     payment.finalizedAt = event.block.timestamp;
     payment.save();
   }
+
+  // 2. Update PromptRequest Entity
+  // The escrowId matches the answerMessageId used as the ID for PromptRequest
+  let requestId = event.params.escrowId.toString();
+  let request = PromptRequest.load(requestId);
+
+  if (request) {
+    request.isRefunded = true;
+    request.save();
+
+    // Update Conversation Timestamp so syncService picks up the "Refunded" status
+    let conversation = Conversation.load(request.conversation);
+    if (conversation) {
+      conversation.lastMessageCreatedAt = event.block.timestamp;
+      conversation.save();
+    }
+  }
 }
 
 export function handleSpendingLimitSet(event: SpendingLimitSet): void {
   let id = event.params.user.toHexString();
-  let sub = new SpendingLimit(id);
-  sub.user = event.params.user;
-  sub.allowance = event.params.allowance;
-  sub.expiresAt = event.params.expiresAt;
-  sub.updatedAt = event.block.timestamp;
-  sub.save();
+  let limit = new SpendingLimit(id);
+  limit.user = event.params.user;
+  limit.allowance = event.params.allowance;
+  limit.expiresAt = event.params.expiresAt;
+  limit.updatedAt = event.block.timestamp;
+  limit.save();
+}
+
+export function handleSpendingLimitCancelled(
+  event: SpendingLimitCancelled
+): void {
+  store.remove("SpendingLimit", event.params.user.toHexString());
 }

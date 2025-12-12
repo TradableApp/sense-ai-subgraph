@@ -6,8 +6,15 @@ import {
   ConversationBranched,
   ConversationMetadataUpdated,
   SearchIndexDeltaAdded,
+  PromptSubmitted,
+  PromptCancelled,
 } from "../generated/EVMAIAgent/EVMAIAgent";
-import { Conversation, Message, SearchDelta } from "../generated/schema";
+import {
+  Conversation,
+  Message,
+  SearchDelta,
+  PromptRequest,
+} from "../generated/schema";
 
 export function handleConversationAdded(event: ConversationAdded): void {
   let entity = new Conversation(event.params.conversationId.toString());
@@ -77,6 +84,14 @@ export function handleAnswerMessageAdded(event: AnswerMessageAdded): void {
     conversation.lastMessageCreatedAt = event.block.timestamp;
     conversation.save();
   }
+
+  // Mark the request as answered so we don't sync it as "pending" or "cancelled"
+  let requestId = event.params.messageId.toString();
+  let request = PromptRequest.load(requestId);
+  if (request) {
+    request.isAnswered = true;
+    request.save();
+  }
 }
 
 export function handleSearchIndexDeltaAdded(
@@ -97,10 +112,61 @@ export function handleConversationMetadataUpdated(
   if (conversation) {
     conversation.conversationMetadataCID =
       event.params.newConversationMetadataCID;
+
+    // Update the timestamp so syncService picks up this change
+    conversation.lastMessageCreatedAt = event.block.timestamp;
+
     // Note: We don't explicitly track "isDeleted" here because the metadata CID
     // contains the encrypted "isDeleted" flag which the frontend handles.
     // However, if you want to filter deleted convos purely on the graph,
     // you would need a specific event for deletion or metadata parsing (impossible here).
     conversation.save();
+  }
+}
+
+// --- Handle Raw Intent for Cancelled History ---
+
+export function handlePromptSubmitted(event: PromptSubmitted): void {
+  // We key by answerMessageId because that's the only ID available during cancellation
+  let id = event.params.answerMessageId.toString();
+
+  let entity = new PromptRequest(id);
+  entity.promptMessageId = event.params.promptMessageId;
+  entity.conversation = event.params.conversationId.toString();
+  entity.user = event.params.user;
+  entity.encryptedPayload = event.params.encryptedPayload;
+
+  // Initialize state
+  entity.isCancelled = false;
+  entity.isAnswered = false;
+  entity.isRefunded = false;
+
+  entity.createdAt = event.block.timestamp;
+  entity.transactionHash = event.transaction.hash.toHexString();
+
+  entity.save();
+
+  // Update Conversation Timestamp so syncService picks up the "Pending" item
+  let conversation = Conversation.load(event.params.conversationId.toString());
+  if (conversation) {
+    conversation.lastMessageCreatedAt = event.block.timestamp;
+    conversation.save();
+  }
+}
+
+export function handlePromptCancelled(event: PromptCancelled): void {
+  let id = event.params.answerMessageId.toString();
+  let entity = PromptRequest.load(id);
+
+  if (entity) {
+    entity.isCancelled = true;
+    entity.save();
+
+    // Update Conversation Timestamp so syncService picks up the "Cancelled" status
+    let conversation = Conversation.load(entity.conversation);
+    if (conversation) {
+      conversation.lastMessageCreatedAt = event.block.timestamp;
+      conversation.save();
+    }
   }
 }

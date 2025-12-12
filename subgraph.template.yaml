@@ -22,6 +22,7 @@ dataSources:
         - Conversation
         - Message
         - SearchDelta
+        - PromptRequest
       abis:
         - name: EVMAIAgent
           file: ./abis/EVMAIAgent.json
@@ -38,6 +39,10 @@ dataSources:
           handler: handleConversationMetadataUpdated
         - event: SearchIndexDeltaAdded(indexed uint256,string)
           handler: handleSearchIndexDeltaAdded
+        - event: PromptSubmitted(indexed address,indexed uint256,indexed uint256,uint256,bytes,bytes)
+          handler: handlePromptSubmitted
+        - event: PromptCancelled(indexed address,indexed uint256)
+          handler: handlePromptCancelled
       file: ./src/evmai-agent.ts
 
   # ---------------------------------------------------------
@@ -69,4 +74,6 @@ dataSources:
           handler: handlePaymentRefunded
         - event: SpendingLimitSet(indexed address,indexed uint256,indexed uint256)
           handler: handleSpendingLimitSet
+        - event: SpendingLimitCancelled(indexed address)
+          handler: handleSpendingLimitCancelled
       file: ./src/evmai-agent-escrow.ts
