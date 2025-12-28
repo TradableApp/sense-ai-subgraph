@@ -1,4 +1,4 @@
-import { BigInt } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, ethereum, Address } from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -8,13 +8,43 @@ import {
   SearchIndexDeltaAdded,
   PromptSubmitted,
   PromptCancelled,
+  BranchRequested,
+  MetadataUpdateRequested,
+  EVMAIAgent,
 } from "../generated/EVMAIAgent/EVMAIAgent";
+import { EVMAIAgentEscrow } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
 import {
   Conversation,
   Message,
   SearchDelta,
   PromptRequest,
+  Activity,
 } from "../generated/schema";
+
+// Helper function to create activities
+function createActivity(
+  event: ethereum.Event,
+  user: Bytes,
+  type: String,
+  amount: BigInt
+): void {
+  let activity = new Activity(
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  );
+  activity.user = user;
+  activity.type = type.toString();
+  activity.amount = amount;
+  activity.timestamp = event.block.timestamp;
+  activity.transactionHash = event.transaction.hash;
+  activity.save();
+}
+
+// Helper to get the Escrow contract to read fees
+function getEscrowContract(agentAddress: Address): EVMAIAgentEscrow {
+  let agent = EVMAIAgent.bind(agentAddress);
+  let escrowAddress = agent.aiAgentEscrow();
+  return EVMAIAgentEscrow.bind(escrowAddress);
+}
 
 export function handleConversationAdded(event: ConversationAdded): void {
   let entity = new Conversation(event.params.conversationId.toString());
@@ -113,7 +143,7 @@ export function handleConversationMetadataUpdated(
     conversation.conversationMetadataCID =
       event.params.newConversationMetadataCID;
 
-    // Update the timestamp so syncService picks up this change
+    // Update timestamp to ensure sync service picks up the change
     conversation.lastMessageCreatedAt = event.block.timestamp;
 
     // Note: We don't explicitly track "isDeleted" here because the metadata CID
@@ -169,4 +199,25 @@ export function handlePromptCancelled(event: PromptCancelled): void {
       conversation.save();
     }
   }
+}
+
+// --- Activity Handlers for Direct Actions ---
+
+export function handleBranchRequested(event: BranchRequested): void {
+  // Capture fee from Escrow contract state
+  let escrow = getEscrowContract(event.address);
+  let fee = escrow.branchFee();
+
+  createActivity(event, event.params.user, "BRANCH", fee.neg());
+}
+
+export function handleMetadataUpdateRequested(
+  event: MetadataUpdateRequested
+): void {
+  // Capture fee from Escrow contract state
+  let escrow = getEscrowContract(event.address);
+  let fee = escrow.metadataUpdateFee();
+
+  // Encrypted payload means we don't know if it's rename or delete here
+  createActivity(event, event.params.user, "METADATA_UPDATE", fee.neg());
 }

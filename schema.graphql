@@ -71,3 +71,15 @@ type SpendingLimit @entity(immutable: false) {
   expiresAt: BigInt!
   updatedAt: BigInt!
 }
+
+# --- Unified Activity Log ---
+
+# Immutable: Represents a single, discrete on-chain action
+type Activity @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  user: Bytes! # The user who performed the action
+  type: String! # e.g., "CONVERSATION", "RENAME", "BRANCH", "CANCEL", "REFUND", "PLAN_UPDATE", "PLAN_REVOKE"
+  amount: BigInt! # Can be negative (cost) or positive (refund). Wei.
+  timestamp: BigInt! # Block timestamp
+  transactionHash: Bytes!
+}

@@ -23,9 +23,12 @@ dataSources:
         - Message
         - SearchDelta
         - PromptRequest
+        - Activity
       abis:
         - name: EVMAIAgent
           file: ./abis/EVMAIAgent.json
+        - name: EVMAIAgentEscrow
+          file: ./abis/EVMAIAgentEscrow.json
       eventHandlers:
         - event: ConversationAdded(indexed address,indexed uint256,string,string)
           handler: handleConversationAdded
@@ -43,6 +46,10 @@ dataSources:
           handler: handlePromptSubmitted
         - event: PromptCancelled(indexed address,indexed uint256)
           handler: handlePromptCancelled
+        - event: BranchRequested(indexed address,indexed uint256,uint256,uint256,bytes,bytes)
+          handler: handleBranchRequested
+        - event: MetadataUpdateRequested(indexed address,indexed uint256,bytes,bytes)
+          handler: handleMetadataUpdateRequested
       file: ./src/evmai-agent.ts
 
   # ---------------------------------------------------------
@@ -62,6 +69,7 @@ dataSources:
       entities:
         - Payment
         - SpendingLimit
+        - Activity
       abis:
         - name: EVMAIAgentEscrow
           file: ./abis/EVMAIAgentEscrow.json
@@ -76,4 +84,6 @@ dataSources:
           handler: handleSpendingLimitSet
         - event: SpendingLimitCancelled(indexed address)
           handler: handleSpendingLimitCancelled
+        - event: PromptCancelled(indexed address,indexed uint256)
+          handler: handlePromptCancelled
       file: ./src/evmai-agent-escrow.ts

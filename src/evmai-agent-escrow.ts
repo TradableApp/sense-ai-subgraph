@@ -1,17 +1,38 @@
-import { BigInt, store } from "@graphprotocol/graph-ts";
+import { BigInt, store, Bytes, ethereum } from "@graphprotocol/graph-ts";
 import {
+  EVMAIAgentEscrow,
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
   SpendingLimitSet,
   SpendingLimitCancelled,
+  PromptCancelled,
 } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
 import {
   Payment,
   SpendingLimit,
   PromptRequest,
   Conversation,
+  Activity,
 } from "../generated/schema";
+
+// Helper function to create activities
+function createActivity(
+  event: ethereum.Event,
+  user: Bytes,
+  type: String,
+  amount: BigInt
+): void {
+  let activity = new Activity(
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  );
+  activity.user = user;
+  activity.type = type.toString();
+  activity.amount = amount;
+  activity.timestamp = event.block.timestamp;
+  activity.transactionHash = event.transaction.hash;
+  activity.save();
+}
 
 export function handlePaymentEscrowed(event: PaymentEscrowed): void {
   let payment = new Payment(event.params.escrowId.toString());
@@ -21,6 +42,13 @@ export function handlePaymentEscrowed(event: PaymentEscrowed): void {
   payment.createdAt = event.block.timestamp;
   payment.txHash = event.transaction.hash.toHexString();
   payment.save();
+
+  createActivity(
+    event,
+    event.params.user,
+    "CONVERSATION",
+    event.params.amount.neg()
+  );
 }
 
 export function handlePaymentFinalized(event: PaymentFinalized): void {
@@ -39,6 +67,8 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
     payment.status = "REFUNDED";
     payment.finalizedAt = event.block.timestamp;
     payment.save();
+
+    createActivity(event, payment.user, "REFUND", payment.amount);
   }
 
   // 2. Update PromptRequest Entity
@@ -59,6 +89,14 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
   }
 }
 
+export function handlePromptCancelled(event: PromptCancelled): void {
+  let contract = EVMAIAgentEscrow.bind(event.address);
+  // We fetch the fee from the contract state to record the cost
+  let cancellationFee = contract.cancellationFee();
+
+  createActivity(event, event.params.user, "CANCEL", cancellationFee.neg());
+}
+
 export function handleSpendingLimitSet(event: SpendingLimitSet): void {
   let id = event.params.user.toHexString();
   let limit = new SpendingLimit(id);
@@ -67,10 +105,14 @@ export function handleSpendingLimitSet(event: SpendingLimitSet): void {
   limit.expiresAt = event.params.expiresAt;
   limit.updatedAt = event.block.timestamp;
   limit.save();
+
+  createActivity(event, event.params.user, "PLAN_UPDATE", BigInt.fromI32(0));
 }
 
 export function handleSpendingLimitCancelled(
   event: SpendingLimitCancelled
 ): void {
   store.remove("SpendingLimit", event.params.user.toHexString());
+
+  createActivity(event, event.params.user, "PLAN_REVOKE", BigInt.fromI32(0));
 }
