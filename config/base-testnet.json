@@ -1,11 +1,11 @@
 {
   "network": "base-sepolia",
   "EVMAIAgent": {
-    "address": "0x93B94F77ffD726E8A35f6b8E4936F36F22b225ea",
-    "startBlock": 34344368
+    "address": "0x4a0C7e5807f9174499a8F56F2C69c61b39a4c64D",
+    "startBlock": 36720090
   },
   "EVMAIAgentEscrow": {
-    "address": "0x2c1fe2103037d045e414E513DAcF8662CF3C06a8",
-    "startBlock": 34344368
+    "address": "0x36ec08471F2b995024967204D7542713cFaf5Fa4",
+    "startBlock": 36720090
   }
 }
