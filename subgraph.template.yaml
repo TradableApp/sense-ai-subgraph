@@ -24,6 +24,9 @@ dataSources:
         - SearchDelta
         - PromptRequest
         - Activity
+        - ProtocolConfig
+        - AgentJob
+        - RegenerationRequest
       abis:
         - name: EVMAIAgent
           file: ./abis/EVMAIAgent.json
@@ -50,6 +53,14 @@ dataSources:
           handler: handleBranchRequested
         - event: MetadataUpdateRequested(indexed address,indexed uint256,bytes,bytes)
           handler: handleMetadataUpdateRequested
+        - event: AgentEscrowUpdated(indexed address)
+          handler: handleAgentEscrowUpdated
+        - event: OracleUpdated(indexed address)
+          handler: handleOracleUpdated
+        - event: AgentJobSubmitted(indexed address,indexed uint256,indexed uint256,bytes,bytes)
+          handler: handleAgentJobSubmitted
+        - event: RegenerationRequested(indexed address,indexed uint256,indexed uint256,uint256,uint256,bytes,bytes)
+          handler: handleRegenerationRequested
       file: ./src/evmai-agent.ts
 
   # ---------------------------------------------------------
@@ -70,6 +81,8 @@ dataSources:
         - Payment
         - SpendingLimit
         - Activity
+        - FeeConfig
+        - ProtocolConfig
       abis:
         - name: EVMAIAgentEscrow
           file: ./abis/EVMAIAgentEscrow.json
@@ -86,4 +99,14 @@ dataSources:
           handler: handleSpendingLimitCancelled
         - event: PromptCancelled(indexed address,indexed uint256)
           handler: handlePromptCancelled
+        - event: PromptFeeUpdated(indexed uint256)
+          handler: handlePromptFeeUpdated
+        - event: BranchFeeUpdated(indexed uint256)
+          handler: handleBranchFeeUpdated
+        - event: CancellationFeeUpdated(indexed uint256)
+          handler: handleCancellationFeeUpdated
+        - event: MetadataUpdateFeeUpdated(indexed uint256)
+          handler: handleMetadataUpdateFeeUpdated
+        - event: TreasuryUpdated(indexed address)
+          handler: handleTreasuryUpdated
       file: ./src/evmai-agent-escrow.ts

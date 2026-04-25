@@ -10,6 +10,10 @@ import {
   PromptCancelled,
   BranchRequested,
   MetadataUpdateRequested,
+  AgentEscrowUpdated,
+  OracleUpdated,
+  AgentJobSubmitted,
+  RegenerationRequested,
   EVMAIAgent,
 } from "../generated/EVMAIAgent/EVMAIAgent";
 import { EVMAIAgentEscrow } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
@@ -19,6 +23,9 @@ import {
   SearchDelta,
   PromptRequest,
   Activity,
+  ProtocolConfig,
+  AgentJob,
+  RegenerationRequest,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -220,4 +227,58 @@ export function handleMetadataUpdateRequested(
 
   // Encrypted payload means we don't know if it's rename or delete here
   createActivity(event, event.params.user, "METADATA_UPDATE", fee.neg());
+}
+
+// --- Admin / Config Handlers ---
+
+export function handleAgentEscrowUpdated(event: AgentEscrowUpdated): void {
+  let config = ProtocolConfig.load("singleton");
+  if (!config) {
+    config = new ProtocolConfig("singleton");
+  }
+  config.escrowAddress = event.params.newAIAgentEscrow;
+  config.updatedAt = event.block.timestamp;
+  config.save();
+}
+
+export function handleOracleUpdated(event: OracleUpdated): void {
+  let config = ProtocolConfig.load("singleton");
+  if (!config) {
+    config = new ProtocolConfig("singleton");
+  }
+  config.oracleAddress = event.params.newOracle;
+  config.updatedAt = event.block.timestamp;
+  config.save();
+}
+
+export function handleAgentJobSubmitted(event: AgentJobSubmitted): void {
+  let id =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let job = new AgentJob(id);
+  job.user = event.params.user;
+  job.jobId = event.params.jobId;
+  job.triggerId = event.params.triggerId;
+  job.encryptedPayload = event.params.encryptedPayload;
+  job.roflEncryptedKey = event.params.roflEncryptedKey;
+  job.timestamp = event.block.timestamp;
+  job.blockNumber = event.block.number;
+  job.save();
+}
+
+export function handleRegenerationRequested(
+  event: RegenerationRequested
+): void {
+  let id =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let regen = new RegenerationRequest(id);
+  regen.user = event.params.user;
+  regen.conversationId = event.params.conversationId;
+  regen.promptMessageId = event.params.promptMessageId;
+  regen.originalAnswerMessageId = event.params.originalAnswerMessageId;
+  regen.answerMessageId = event.params.answerMessageId;
+  regen.encryptedPayload = event.params.encryptedPayload;
+  regen.roflEncryptedKey = event.params.roflEncryptedKey;
+  regen.timestamp = event.block.timestamp;
+  regen.blockNumber = event.block.number;
+  regen.save();
 }

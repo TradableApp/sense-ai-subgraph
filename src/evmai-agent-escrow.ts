@@ -7,6 +7,11 @@ import {
   SpendingLimitSet,
   SpendingLimitCancelled,
   PromptCancelled,
+  PromptFeeUpdated,
+  BranchFeeUpdated,
+  CancellationFeeUpdated,
+  MetadataUpdateFeeUpdated,
+  TreasuryUpdated,
 } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
 import {
   Payment,
@@ -14,6 +19,8 @@ import {
   PromptRequest,
   Conversation,
   Activity,
+  FeeConfig,
+  ProtocolConfig,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -115,4 +122,61 @@ export function handleSpendingLimitCancelled(
   store.remove("SpendingLimit", event.params.user.toHexString());
 
   createActivity(event, event.params.user, "PLAN_REVOKE", BigInt.fromI32(0));
+}
+
+// --- Fee Config Handlers ---
+
+function loadOrCreateFeeConfig(timestamp: BigInt): FeeConfig {
+  let fees = FeeConfig.load("singleton");
+  if (!fees) {
+    fees = new FeeConfig("singleton");
+    fees.promptFee = BigInt.fromI32(0);
+    fees.branchFee = BigInt.fromI32(0);
+    fees.cancellationFee = BigInt.fromI32(0);
+    fees.metadataUpdateFee = BigInt.fromI32(0);
+    fees.updatedAt = timestamp;
+  }
+  return fees;
+}
+
+export function handlePromptFeeUpdated(event: PromptFeeUpdated): void {
+  let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  fees.promptFee = event.params.newFee;
+  fees.updatedAt = event.block.timestamp;
+  fees.save();
+}
+
+export function handleBranchFeeUpdated(event: BranchFeeUpdated): void {
+  let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  fees.branchFee = event.params.newFee;
+  fees.updatedAt = event.block.timestamp;
+  fees.save();
+}
+
+export function handleCancellationFeeUpdated(
+  event: CancellationFeeUpdated
+): void {
+  let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  fees.cancellationFee = event.params.newFee;
+  fees.updatedAt = event.block.timestamp;
+  fees.save();
+}
+
+export function handleMetadataUpdateFeeUpdated(
+  event: MetadataUpdateFeeUpdated
+): void {
+  let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  fees.metadataUpdateFee = event.params.newFee;
+  fees.updatedAt = event.block.timestamp;
+  fees.save();
+}
+
+export function handleTreasuryUpdated(event: TreasuryUpdated): void {
+  let config = ProtocolConfig.load("singleton");
+  if (!config) {
+    config = new ProtocolConfig("singleton");
+  }
+  config.treasuryAddress = event.params.newTreasury;
+  config.updatedAt = event.block.timestamp;
+  config.save();
 }

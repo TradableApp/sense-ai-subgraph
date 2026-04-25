@@ -72,6 +72,55 @@ type SpendingLimit @entity(immutable: false) {
   updatedAt: BigInt!
 }
 
+# --- Protocol Configuration (Singletons) ---
+
+# Mutable: Updated whenever admin changes escrow, oracle, or treasury addresses
+type ProtocolConfig @entity(immutable: false) {
+  id: ID! # always "singleton"
+  escrowAddress: Bytes
+  oracleAddress: Bytes
+  treasuryAddress: Bytes
+  updatedAt: BigInt!
+}
+
+# Mutable: Updated whenever admin changes any fee value
+type FeeConfig @entity(immutable: false) {
+  id: ID! # always "singleton"
+  promptFee: BigInt
+  branchFee: BigInt
+  cancellationFee: BigInt
+  metadataUpdateFee: BigInt
+  updatedAt: BigInt!
+}
+
+# --- TEE Job Entities ---
+
+# Immutable: One record per AgentJobSubmitted event
+type AgentJob @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  user: Bytes!
+  jobId: BigInt!
+  triggerId: BigInt!
+  encryptedPayload: Bytes!
+  roflEncryptedKey: Bytes!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+}
+
+# Immutable: One record per RegenerationRequested event
+type RegenerationRequest @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  user: Bytes!
+  conversationId: BigInt!
+  promptMessageId: BigInt!
+  originalAnswerMessageId: BigInt!
+  answerMessageId: BigInt!
+  encryptedPayload: Bytes!
+  roflEncryptedKey: Bytes!
+  timestamp: BigInt!
+  blockNumber: BigInt!
+}
+
 # --- Unified Activity Log ---
 
 # Immutable: Represents a single, discrete on-chain action
