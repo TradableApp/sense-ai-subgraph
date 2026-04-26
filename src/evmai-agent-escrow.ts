@@ -65,6 +65,19 @@ export function handlePaymentFinalized(event: PaymentFinalized): void {
     payment.finalizedAt = event.block.timestamp;
     payment.save();
   }
+
+  let requestId = event.params.escrowId.toString();
+  let request = PromptRequest.load(requestId);
+  if (request) {
+    request.isAnswered = true;
+    request.save();
+
+    let conversation = Conversation.load(request.conversation);
+    if (conversation) {
+      conversation.lastMessageCreatedAt = event.block.timestamp;
+      conversation.save();
+    }
+  }
 }
 
 export function handlePaymentRefunded(event: PaymentRefunded): void {

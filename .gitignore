@@ -56,4 +56,8 @@ coverage/
 matchstick-coverage.xml
 tests/.bin/
 tests/.latest.json
+# --- Local session tooling ---
+.tmux-devfleet/
 .dmux/
+.dmux-hooks/
+.dmux-session/
