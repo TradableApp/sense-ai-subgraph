@@ -3,7 +3,6 @@ import {
   describe,
   test,
   clearStore,
-  beforeEach,
   afterEach,
 } from "matchstick-as/assembly/index";
 import { Address, BigInt, Bytes } from "@graphprotocol/graph-ts";
@@ -178,6 +177,30 @@ describe("AgentJob — AgentJobSubmitted", () => {
     assert.fieldEquals("AgentJob", id, "user", USER_ADDRESS);
     assert.fieldEquals("AgentJob", id, "jobId", "42");
     assert.fieldEquals("AgentJob", id, "triggerId", "7");
+    assert.fieldEquals(
+      "AgentJob",
+      id,
+      "encryptedPayload",
+      payload.toHexString()
+    );
+    assert.fieldEquals(
+      "AgentJob",
+      id,
+      "roflEncryptedKey",
+      roflKey.toHexString()
+    );
+    assert.fieldEquals(
+      "AgentJob",
+      id,
+      "timestamp",
+      event.block.timestamp.toString()
+    );
+    assert.fieldEquals(
+      "AgentJob",
+      id,
+      "blockNumber",
+      event.block.number.toString()
+    );
   });
 
   test("creates separate AgentJob entities for multiple submissions", () => {
@@ -247,6 +270,30 @@ describe("RegenerationRequest — RegenerationRequested", () => {
       "6"
     );
     assert.fieldEquals("RegenerationRequest", id, "answerMessageId", "11");
+    assert.fieldEquals(
+      "RegenerationRequest",
+      id,
+      "encryptedPayload",
+      payload.toHexString()
+    );
+    assert.fieldEquals(
+      "RegenerationRequest",
+      id,
+      "roflEncryptedKey",
+      roflKey.toHexString()
+    );
+    assert.fieldEquals(
+      "RegenerationRequest",
+      id,
+      "timestamp",
+      event.block.timestamp.toString()
+    );
+    assert.fieldEquals(
+      "RegenerationRequest",
+      id,
+      "blockNumber",
+      event.block.number.toString()
+    );
   });
 });
 

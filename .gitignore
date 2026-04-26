@@ -54,4 +54,6 @@ cache
 # --- Testing ---
 coverage/
 matchstick-coverage.xml
+tests/.bin/
+tests/.latest.json
 .dmux/
