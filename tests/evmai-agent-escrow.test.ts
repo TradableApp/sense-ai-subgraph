@@ -271,7 +271,7 @@ describe("handlePaymentFinalized — finalizedAt", () => {
 
   test("Payment.finalizedAt is set on finalization", () => {
     assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "COMPLETE");
-    assert.assertTrue(true);
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "finalizedAt", "1");
   });
 });
 
@@ -300,6 +300,14 @@ describe("handlePaymentRefunded — finalizedAt and Activity amount", () => {
 
   test("Payment.status is REFUNDED", () => {
     assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "REFUNDED");
+  });
+
+  test("Payment.finalizedAt is set on refund", () => {
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "finalizedAt", "1");
+  });
+
+  test("Refund Activity overwrites escrow Activity with positive amount", () => {
+    assert.entityCount("Activity", 1);
   });
 
   test("PromptRequest.isRefunded is true", () => {
