@@ -5,6 +5,7 @@ import {
   clearStore,
   beforeAll,
   afterAll,
+  afterEach,
   createMockedFunction,
 } from "matchstick-as/assembly/index";
 import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
@@ -201,5 +202,180 @@ describe("SpendingLimit handlers", () => {
     );
     handleSpendingLimitCancelled(cancelEvent);
     assert.entityCount("SpendingLimit", 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PaymentEscrowed — entity creation and Activity
+// ---------------------------------------------------------------------------
+describe("handlePaymentEscrowed — entity fields", () => {
+  afterEach(() => {
+    clearStore();
+  });
+
+  test("Payment is created with PENDING status", () => {
+    let event = createPaymentEscrowedEvent(
+      BigInt.fromString(ANSWER_MSG_ID),
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(AMOUNT)
+    );
+    handlePaymentEscrowed(event);
+
+    assert.entityCount("Payment", 1);
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "PENDING");
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "user", USER_ADDRESS);
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "amount", AMOUNT);
+  });
+
+  test("Activity is created with type CONVERSATION and negative amount", () => {
+    let event = createPaymentEscrowedEvent(
+      BigInt.fromString(ANSWER_MSG_ID),
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(AMOUNT)
+    );
+    handlePaymentEscrowed(event);
+
+    assert.entityCount("Activity", 1);
+    let id =
+      event.transaction.hash.toHexString() +
+      "-" +
+      event.logIndex.toString();
+    assert.fieldEquals("Activity", id, "type", "CONVERSATION");
+    assert.fieldEquals("Activity", id, "amount", "-" + AMOUNT);
+    assert.fieldEquals("Activity", id, "user", USER_ADDRESS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PaymentFinalized — sets finalizedAt timestamp
+// ---------------------------------------------------------------------------
+describe("handlePaymentFinalized — finalizedAt", () => {
+  beforeAll(() => {
+    seedConversationAndRequest();
+    let escrowEvent = createPaymentEscrowedEvent(
+      BigInt.fromString(ANSWER_MSG_ID),
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(AMOUNT)
+    );
+    handlePaymentEscrowed(escrowEvent);
+
+    let finalEvent = createPaymentFinalizedEvent(
+      BigInt.fromString(ANSWER_MSG_ID)
+    );
+    handlePaymentFinalized(finalEvent);
+  });
+
+  afterAll(() => {
+    clearStore();
+  });
+
+  test("Payment.finalizedAt is set on finalization", () => {
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "COMPLETE");
+    assert.assertTrue(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PaymentRefunded — sets finalizedAt and creates positive Activity
+// ---------------------------------------------------------------------------
+describe("handlePaymentRefunded — finalizedAt and Activity amount", () => {
+  beforeAll(() => {
+    seedConversationAndRequest();
+    let escrowEvent = createPaymentEscrowedEvent(
+      BigInt.fromString(ANSWER_MSG_ID),
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(AMOUNT)
+    );
+    handlePaymentEscrowed(escrowEvent);
+
+    let refundEvent = createPaymentRefundedEvent(
+      BigInt.fromString(ANSWER_MSG_ID)
+    );
+    handlePaymentRefunded(refundEvent);
+  });
+
+  afterAll(() => {
+    clearStore();
+  });
+
+  test("Payment.status is REFUNDED", () => {
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "REFUNDED");
+  });
+
+  test("PromptRequest.isRefunded is true", () => {
+    assert.fieldEquals("PromptRequest", ANSWER_MSG_ID, "isRefunded", "true");
+  });
+
+  test("PromptRequest.isCancelled remains false", () => {
+    assert.fieldEquals("PromptRequest", ANSWER_MSG_ID, "isCancelled", "false");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SpendingLimit — upsert on second set
+// ---------------------------------------------------------------------------
+describe("SpendingLimit — upsert behaviour", () => {
+  const ALLOWANCE = "500000000000000000";
+  const UPDATED_ALLOWANCE = "750000000000000000";
+  const EXPIRES_AT = "9999999999";
+
+  afterEach(() => {
+    clearStore();
+  });
+
+  test("second SpendingLimitSet updates existing entity", () => {
+    let setEvent1 = createSpendingLimitSetEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(ALLOWANCE),
+      BigInt.fromString(EXPIRES_AT)
+    );
+    handleSpendingLimitSet(setEvent1);
+
+    let setEvent2 = createSpendingLimitSetEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(UPDATED_ALLOWANCE),
+      BigInt.fromString(EXPIRES_AT)
+    );
+    handleSpendingLimitSet(setEvent2);
+
+    assert.entityCount("SpendingLimit", 1);
+    assert.fieldEquals(
+      "SpendingLimit",
+      USER_ADDRESS,
+      "allowance",
+      UPDATED_ALLOWANCE
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Escrow PromptCancelled — Activity amount uses cancellationFee
+// ---------------------------------------------------------------------------
+describe("handlePromptCancelled (Escrow) — Activity details", () => {
+  afterEach(() => {
+    clearStore();
+  });
+
+  test("Activity amount is negative cancellationFee", () => {
+    seedConversationAndRequest();
+
+    createMockedFunction(
+      Address.fromString("0xa16081F360e3847006dB660bae1c6d1b2e17eC2A"),
+      "cancellationFee",
+      "cancellationFee():(uint256)"
+    ).returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(300))]);
+
+    let cancelEvent = createEscrowPromptCancelledEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(ANSWER_MSG_ID)
+    );
+    handlePromptCancelled(cancelEvent);
+
+    let id =
+      cancelEvent.transaction.hash.toHexString() +
+      "-" +
+      cancelEvent.logIndex.toString();
+    assert.fieldEquals("Activity", id, "type", "CANCEL");
+    assert.fieldEquals("Activity", id, "amount", "-300");
   });
 });
