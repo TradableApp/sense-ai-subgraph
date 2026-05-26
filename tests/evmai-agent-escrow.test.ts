@@ -279,42 +279,65 @@ describe("handlePaymentFinalized — finalizedAt", () => {
 // PaymentRefunded — sets finalizedAt and creates positive Activity
 // ---------------------------------------------------------------------------
 describe("handlePaymentRefunded — finalizedAt and Activity amount", () => {
-  beforeAll(() => {
-    seedConversationAndRequest();
-    let escrowEvent = createPaymentEscrowedEvent(
-      BigInt.fromString(ANSWER_MSG_ID),
-      Address.fromString(USER_ADDRESS),
-      BigInt.fromString(AMOUNT)
-    );
-    handlePaymentEscrowed(escrowEvent);
-
-    let refundEvent = createPaymentRefundedEvent(
-      BigInt.fromString(ANSWER_MSG_ID)
-    );
-    handlePaymentRefunded(refundEvent);
-  });
-
-  afterAll(() => {
+  afterEach(() => {
     clearStore();
   });
 
-  test("Payment.status is REFUNDED", () => {
-    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "REFUNDED");
-  });
+  test("Payment.status is REFUNDED and finalizedAt is set", () => {
+    seedConversationAndRequest();
+    handlePaymentEscrowed(
+      createPaymentEscrowedEvent(
+        BigInt.fromString(ANSWER_MSG_ID),
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(AMOUNT)
+      )
+    );
+    handlePaymentRefunded(
+      createPaymentRefundedEvent(BigInt.fromString(ANSWER_MSG_ID))
+    );
 
-  test("Payment.finalizedAt is set on refund", () => {
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "REFUNDED");
     assert.fieldEquals("Payment", ANSWER_MSG_ID, "finalizedAt", "1");
   });
 
-  test("Refund Activity overwrites escrow Activity with positive amount", () => {
-    assert.entityCount("Activity", 1);
+  test("Refund Activity has type REFUND and positive amount", () => {
+    seedConversationAndRequest();
+    handlePaymentEscrowed(
+      createPaymentEscrowedEvent(
+        BigInt.fromString(ANSWER_MSG_ID),
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(AMOUNT)
+      )
+    );
+    let refundEvent = createPaymentRefundedEvent(
+      BigInt.fromString(ANSWER_MSG_ID)
+    );
+    refundEvent.logIndex = BigInt.fromI32(2);
+    handlePaymentRefunded(refundEvent);
+
+    assert.entityCount("Activity", 2);
+    let refundId =
+      refundEvent.transaction.hash.toHex() +
+      "-" +
+      refundEvent.logIndex.toString();
+    assert.fieldEquals("Activity", refundId, "type", "REFUND");
+    assert.fieldEquals("Activity", refundId, "amount", AMOUNT);
   });
 
-  test("PromptRequest.isRefunded is true", () => {
+  test("PromptRequest.isRefunded is true and isCancelled remains false", () => {
+    seedConversationAndRequest();
+    handlePaymentEscrowed(
+      createPaymentEscrowedEvent(
+        BigInt.fromString(ANSWER_MSG_ID),
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(AMOUNT)
+      )
+    );
+    handlePaymentRefunded(
+      createPaymentRefundedEvent(BigInt.fromString(ANSWER_MSG_ID))
+    );
+
     assert.fieldEquals("PromptRequest", ANSWER_MSG_ID, "isRefunded", "true");
-  });
-
-  test("PromptRequest.isCancelled remains false", () => {
     assert.fieldEquals("PromptRequest", ANSWER_MSG_ID, "isCancelled", "false");
   });
 });
