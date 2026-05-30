@@ -10,6 +10,7 @@ The Graph subgraph for indexing SenseAI on-chain data. Provides a GraphQL API fo
 
 | Command | Purpose |
 |---------|---------|
+| `npm run config:localnet` | Generate config/localnet.json from env vars (see below) |
 | `npm run prepare:localnet` | Generate subgraph.yaml for local network |
 | `npm run prepare:testnet` | Generate subgraph.yaml for Base Sepolia testnet |
 | `npm run prepare:mainnet` | Generate subgraph.yaml for Base mainnet |
@@ -28,6 +29,25 @@ There is no single-test command — `graph test` runs all tests via matchstick-a
 ```
 npm run prepare:<network> && npm run codegen && npm run build
 ```
+
+### Localnet Config Regeneration
+
+The `config/localnet.json` file is regenerable from environment variables. Use this when deploying to a fresh Hardhat node with new contract addresses:
+
+```bash
+# Regenerate config with default addresses (Hardhat deterministic)
+npm run config:localnet
+
+# Regenerate with custom contract addresses
+EVMAI_AGENT_ADDRESS=0x... EVMAI_AGENT_ESCROW_ADDRESS=0x... START_BLOCK=100 npm run config:localnet
+```
+
+Environment variables (all optional, defaults provided):
+- `EVMAI_AGENT_ADDRESS`: EVMAIAgent proxy address (default: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`)
+- `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address (default: `0x0165878A594ca255338adfa4d48449f69242Eb8F`)
+- `START_BLOCK`: Block height to start indexing from (default: `0`)
+
+The generator (`scripts/gen-localnet-config.js`) validates address format and block number before writing.
 
 ## Architecture
 
@@ -125,6 +145,10 @@ cp artifacts/contracts/EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json ../sense-ai-su
 npm run prepare:testnet && npm run codegen && npm run build
 ```
 
+**ABI Status (as of 29 May 2026):**
+- `abis/EVMAIAgent.json`: In sync with `tokenized-ai-agent` (event list verified)
+- `abis/EVMAIAgentEscrow.json`: In sync with `tokenized-ai-agent` (event list verified)
+
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.
 
 ### Deployed Addresses (Base Sepolia)
@@ -143,6 +167,51 @@ These must match `config/base-testnet.json`. The `startBlock` in that config mus
 - `GET_RECENT_ACTIVITY_QUERY` — queries the `Activity` entity for spending history
 
 The `Activity.amount` field is negative for costs and positive for refunds (in wei).
+
+## Local E2E Deployment (Fresh Hardhat)
+
+This section describes the orchestrator's workflow for deploying the subgraph against a freshly deployed Hardhat network.
+
+### Prerequisites
+- Hardhat node running on `localhost:8545` with EVMAIAgent and EVMAIAgentEscrow contracts deployed
+- Contract addresses and deployment block height known
+
+### Orchestration Steps
+
+```bash
+# 1. In sense-ai-subgraph root, regenerate config with deployed addresses
+EVMAI_AGENT_ADDRESS=0x<deployed-agent> EVMAI_AGENT_ESCROW_ADDRESS=0x<deployed-escrow> START_BLOCK=<block> npm run config:localnet
+
+# 2. Bring up the Graph node stack (postgres, ipfs, graph-node)
+docker-compose up -d
+
+# 3. Prepare + codegen + build (static validation — no live node needed yet)
+npm run prepare:localnet && npm run codegen && npm run build
+
+# 4. Create the subgraph on the local Graph node
+npm run create-local
+
+# 5. Deploy the subgraph to the local Graph node
+npm run deploy-local
+```
+
+### Expected Results
+
+- Graph node logs (visible via `docker-compose logs graph-node -f`) should show indexing progress
+- GraphQL endpoint available at `http://localhost:8000/subgraphs/name/sense-ai`
+- dApp can query the subgraph using:
+  ```graphql
+  {
+    conversations(first: 10) { id user conversationId }
+    promptRequests(where: { isAnswered: false }) { id isAnswered }
+  }
+  ```
+
+### Host-Container Networking
+
+The graph-node container reaches the host Hardhat node via `host.docker.internal:8545` (configured in `docker-compose.yml`). This works on macOS and Windows with Docker Desktop.
+
+**Linux users:** Must replace `host.docker.internal` with the host machine's IP or use `--network host` (trade-off: less isolation).
 
 ## Key Notes
 
