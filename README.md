@@ -8,7 +8,7 @@ This subgraph indexes the **SenseAI** smart contracts (Agent & Escrow) on Base (
 
 - **Node.js** (v18+)
 - **Docker Desktop** (Only required for Local Development)
-- **Graph CLI** (`npm install -g @graphprotocol/graph-cli`)
+- **Graph CLI** (`bun add -g @graphprotocol/graph-cli`)
 
 ## ⚙️ Configuration
 
@@ -32,7 +32,7 @@ Use this to test the subgraph logic on your machine without waiting for public t
     Ensure your local Hardhat node is running from the `tokenized-ai-agent` repo:
 
     ```bash
-    npx hardhat node
+    bunx hardhat node
     ```
 
 2.  **Start The Graph Node:**
@@ -45,8 +45,8 @@ Use this to test the subgraph logic on your machine without waiting for public t
 3.  **Deploy:**
     Run the following to generate the config, build, and deploy to your local Docker container:
     ```bash
-    npm run create-local  # Only run this once to initialize
-    npm run deploy-local  # Run this every time you change code
+    bun run create-local  # Only run this once to initialize
+    bun run deploy-local  # Run this every time you change code
     ```
     _GraphQL Endpoint:_ `http://localhost:8000/subgraphs/name/sense-ai`
 
@@ -70,7 +70,7 @@ Deploys to **The Graph Studio** using the slug `sense-ai-testnet`.
     This script compiles the code using `config/base-testnet.json` and pushes it to the Studio.
 
     ```bash
-    npm run deploy:testnet
+    bun run deploy:testnet
     ```
 
 4.  **Update Frontend:**
@@ -100,7 +100,7 @@ Deploys the production version using the slug **`sense-ai`**.
 3.  **Deploy:**
 
     ```bash
-    npm run deploy:mainnet
+    bun run deploy:mainnet
     ```
 
 4.  **Publish (Studio Only):**
@@ -115,4 +115,4 @@ Deploys the production version using the slug **`sense-ai`**.
   - `evmai-agent.ts`: Handles chat history events.
   - `evmai-agent-escrow.ts`: Handles payments and spending limits.
 - `subgraph.template.yaml`: The master configuration template.
-- `tests/`: Unit tests for mapping logic (`npm run test`).
+- `tests/`: Unit tests for mapping logic (`bun run test`).
