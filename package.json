@@ -12,10 +12,10 @@
     "// --- LOCAL DEPLOYMENT ---": "---",
     "create-local": "graph create --node http://localhost:8020/ sense-ai",
     "remove-local": "graph remove --node http://localhost:8020/ sense-ai",
-    "deploy-local": "npm run prepare:localnet && npm run codegen && npm run build && graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 sense-ai",
+    "deploy-local": "bun run prepare:localnet && bun run codegen && bun run build && graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 sense-ai",
     "// --- STUDIO DEPLOYMENT ---": "---",
-    "deploy:testnet": "npm run prepare:testnet && npm run codegen && npm run build && graph deploy sense-ai-testnet",
-    "deploy:mainnet": "npm run prepare:mainnet && npm run codegen && npm run build && graph deploy sense-ai",
+    "deploy:testnet": "bun run prepare:testnet && bun run codegen && bun run build && graph deploy sense-ai-testnet",
+    "deploy:mainnet": "bun run prepare:mainnet && bun run codegen && bun run build && graph deploy sense-ai",
     "// --- TESTING ---": "---",
     "test": "graph test"
   },

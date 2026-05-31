@@ -10,24 +10,24 @@ The Graph subgraph for indexing SenseAI on-chain data. Provides a GraphQL API fo
 
 | Command | Purpose |
 |---------|---------|
-| `npm run config:localnet` | Generate config/localnet.json from env vars (see below) |
-| `npm run prepare:localnet` | Generate subgraph.yaml for local network |
-| `npm run prepare:testnet` | Generate subgraph.yaml for Base Sepolia testnet |
-| `npm run prepare:mainnet` | Generate subgraph.yaml for Base mainnet |
-| `npm run codegen` | Generate AssemblyScript types from schema |
-| `npm run build` | Build the subgraph |
-| `npm run create-local` | Create subgraph on local Graph node |
-| `npm run remove-local` | Remove subgraph from local Graph node |
-| `npm run deploy-local` | Prepare + codegen + build + deploy locally |
-| `npm run deploy:testnet` | Deploy to The Graph Studio (testnet) |
-| `npm run deploy:mainnet` | Deploy to The Graph Studio (mainnet) |
-| `npm run test` | Run all subgraph tests (matchstick-as) |
+| `bun run config:localnet` | Generate config/localnet.json from env vars (see below) |
+| `bun run prepare:localnet` | Generate subgraph.yaml for local network |
+| `bun run prepare:testnet` | Generate subgraph.yaml for Base Sepolia testnet |
+| `bun run prepare:mainnet` | Generate subgraph.yaml for Base mainnet |
+| `bun run codegen` | Generate AssemblyScript types from schema |
+| `bun run build` | Build the subgraph |
+| `bun run create-local` | Create subgraph on local Graph node |
+| `bun run remove-local` | Remove subgraph from local Graph node |
+| `bun run deploy-local` | Prepare + codegen + build + deploy locally |
+| `bun run deploy:testnet` | Deploy to The Graph Studio (testnet) |
+| `bun run deploy:mainnet` | Deploy to The Graph Studio (mainnet) |
+| `bun run test` | Run all subgraph tests (matchstick-as) |
 
 There is no single-test command — `graph test` runs all tests via matchstick-as.
 
 **Required order for any schema or ABI change:**
 ```
-npm run prepare:<network> && npm run codegen && npm run build
+bun run prepare:<network> && bun run codegen && bun run build
 ```
 
 ### Localnet Config Regeneration
@@ -36,10 +36,10 @@ The `config/localnet.json` file is regenerable from environment variables. Use t
 
 ```bash
 # Regenerate config with default addresses (Hardhat deterministic)
-npm run config:localnet
+bun run config:localnet
 
 # Regenerate with custom contract addresses
-EVMAI_AGENT_ADDRESS=0x... EVMAI_AGENT_ESCROW_ADDRESS=0x... START_BLOCK=100 npm run config:localnet
+EVMAI_AGENT_ADDRESS=0x... EVMAI_AGENT_ESCROW_ADDRESS=0x... START_BLOCK=100 bun run config:localnet
 ```
 
 Environment variables (all optional, defaults provided):
@@ -135,14 +135,14 @@ ABIs in `abis/` are copied from `tokenized-ai-agent/artifacts/contracts/`. When 
 
 ```bash
 # In tokenized-ai-agent root
-npm run compile
+bun run compile
 
 # Copy updated ABIs here
 cp artifacts/contracts/EVMAIAgent.sol/EVMAIAgent.json ../sense-ai-subgraph/abis/
 cp artifacts/contracts/EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json ../sense-ai-subgraph/abis/
 
 # Then regenerate
-npm run prepare:testnet && npm run codegen && npm run build
+bun run prepare:testnet && bun run codegen && bun run build
 ```
 
 **ABI Status (as of 29 May 2026):**
@@ -180,19 +180,19 @@ This section describes the orchestrator's workflow for deploying the subgraph ag
 
 ```bash
 # 1. In sense-ai-subgraph root, regenerate config with deployed addresses
-EVMAI_AGENT_ADDRESS=0x<deployed-agent> EVMAI_AGENT_ESCROW_ADDRESS=0x<deployed-escrow> START_BLOCK=<block> npm run config:localnet
+EVMAI_AGENT_ADDRESS=0x<deployed-agent> EVMAI_AGENT_ESCROW_ADDRESS=0x<deployed-escrow> START_BLOCK=<block> bun run config:localnet
 
 # 2. Bring up the Graph node stack (postgres, ipfs, graph-node)
 docker-compose up -d
 
 # 3. Prepare + codegen + build (static validation — no live node needed yet)
-npm run prepare:localnet && npm run codegen && npm run build
+bun run prepare:localnet && bun run codegen && bun run build
 
 # 4. Create the subgraph on the local Graph node
-npm run create-local
+bun run create-local
 
 # 5. Deploy the subgraph to the local Graph node
-npm run deploy-local
+bun run deploy-local
 ```
 
 ### Expected Results
