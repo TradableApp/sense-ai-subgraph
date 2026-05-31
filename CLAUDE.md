@@ -44,7 +44,7 @@ EVMAI_AGENT_ADDRESS=0x... EVMAI_AGENT_ESCROW_ADDRESS=0x... START_BLOCK=100 npm r
 
 Environment variables (all optional, defaults provided):
 - `EVMAI_AGENT_ADDRESS`: EVMAIAgent proxy address (default: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`)
-- `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address (default: `0x0165878A594ca255338adfa4d48449f69242Eb8F`)
+- `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address (default: `0x5FC8d32690cc91D4c39d9d3abcBD16989F875707`)
 - `START_BLOCK`: Block height to start indexing from (default: `0`)
 
 The generator (`scripts/gen-localnet-config.js`) validates address format and block number before writing.
