@@ -32,7 +32,7 @@ bun run prepare:<network> && bun run codegen && bun run build
 
 ### Localnet Config Regeneration
 
-The `config/localnet.json` file is regenerable from environment variables. Use this when deploying to a fresh Hardhat node with new contract addresses:
+The `config/localnet.json` file is regenerable. Use this when deploying to a fresh Hardhat node with new contract addresses:
 
 ```bash
 # Regenerate config with default addresses (Hardhat deterministic)
@@ -40,12 +40,18 @@ bun run config:localnet
 
 # Regenerate with custom contract addresses
 EVMAI_AGENT_ADDRESS=0x... EVMAI_AGENT_ESCROW_ADDRESS=0x... START_BLOCK=100 bun run config:localnet
+
+# Or point at the e2e orchestrator's canonical addresses.json
+ADDRESSES_FILE=/abs/path/addresses.json bun run config:localnet
 ```
 
-Environment variables (all optional, defaults provided):
-- `EVMAI_AGENT_ADDRESS`: EVMAIAgent proxy address (default: `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`)
-- `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address (default: `0x5FC8d32690cc91D4c39d9d3abcBD16989F875707`)
-- `START_BLOCK`: Block height to start indexing from (default: `0`)
+Input sources, in precedence order (first wins):
+1. Explicit env vars (all optional):
+   - `EVMAI_AGENT_ADDRESS`: EVMAIAgent proxy address
+   - `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address
+   - `START_BLOCK`: Block height to start indexing from
+2. `ADDRESSES_FILE`: path to the flat `addresses.json` the e2e orchestrator (`sense-ai-e2e`) writes — `{ "chainId": 31337, "ABLE": "0x..", "EVMAIAgent": "0x..", "EVMAIAgentEscrow": "0x.." }`. Read via the `EVMAIAgent` / `EVMAIAgentEscrow` keys.
+3. Hardhat deterministic defaults — `EVMAIAgent` `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`, `EVMAIAgentEscrow` `0x5FC8d32690cc91D4c39d9d3abcBD16989F875707`, `startBlock` `0`. A **Warning** is logged whenever an address falls back to a default, so a missing input can't silently masquerade as success.
 
 The generator (`scripts/gen-localnet-config.js`) validates address format and block number before writing.
 
