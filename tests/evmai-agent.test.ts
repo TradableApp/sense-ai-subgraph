@@ -6,9 +6,8 @@ import {
   beforeAll,
   afterAll,
   afterEach,
-  createMockedFunction,
 } from "matchstick-as/assembly/index";
-import { Address, BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { Address, BigInt, Bytes } from "@graphprotocol/graph-ts";
 import {
   handleConversationAdded,
   handlePromptSubmitted,
@@ -33,6 +32,19 @@ import {
   createBranchRequestedEvent,
   createMetadataUpdateRequestedEvent,
 } from "./evmai-agent-utils";
+import { FeeConfig } from "../generated/schema";
+
+// Seeds the singleton FeeConfig (all fees 0) so a handler can read the fee it charges
+// from the indexed entity instead of an eth_call. Callers set the specific fee + save().
+function seedFeeConfig(): FeeConfig {
+  let fc = new FeeConfig("singleton");
+  fc.promptFee = BigInt.fromI32(0);
+  fc.cancellationFee = BigInt.fromI32(0);
+  fc.metadataUpdateFee = BigInt.fromI32(0);
+  fc.branchFee = BigInt.fromI32(0);
+  fc.updatedAt = BigInt.fromI32(1);
+  return fc;
+}
 
 const USER_ADDRESS = "0x0000000000000000000000000000000000000001";
 const CONV_ID = "1";
@@ -420,19 +432,10 @@ describe("EVMAIAgent — handleBranchRequested creates BRANCH Activity", () => {
   });
 
   test("Activity is created with type BRANCH and negative fee", () => {
-    createMockedFunction(
-      Address.fromString(MOCK_EVENT_ADDRESS),
-      "aiAgentEscrow",
-      "aiAgentEscrow():(address)"
-    ).returns([
-      ethereum.Value.fromAddress(Address.fromString(MOCK_ESCROW_ADDRESS)),
-    ]);
-
-    createMockedFunction(
-      Address.fromString(MOCK_ESCROW_ADDRESS),
-      "branchFee",
-      "branchFee():(uint256)"
-    ).returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(500))]);
+    // The handler reads branchFee from the indexed FeeConfig, NOT via an eth_call.
+    let fc = seedFeeConfig();
+    fc.branchFee = BigInt.fromI32(500);
+    fc.save();
 
     let event = createBranchRequestedEvent(
       Address.fromString(USER_ADDRESS),
@@ -464,19 +467,10 @@ describe("EVMAIAgent — handleMetadataUpdateRequested creates METADATA_UPDATE A
   });
 
   test("Activity is created with type METADATA_UPDATE and negative fee", () => {
-    createMockedFunction(
-      Address.fromString(MOCK_EVENT_ADDRESS),
-      "aiAgentEscrow",
-      "aiAgentEscrow():(address)"
-    ).returns([
-      ethereum.Value.fromAddress(Address.fromString(MOCK_ESCROW_ADDRESS)),
-    ]);
-
-    createMockedFunction(
-      Address.fromString(MOCK_ESCROW_ADDRESS),
-      "metadataUpdateFee",
-      "metadataUpdateFee():(uint256)"
-    ).returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(200))]);
+    // The handler reads metadataUpdateFee from the indexed FeeConfig, NOT via an eth_call.
+    let fc = seedFeeConfig();
+    fc.metadataUpdateFee = BigInt.fromI32(200);
+    fc.save();
 
     let event = createMetadataUpdateRequestedEvent(
       Address.fromString(USER_ADDRESS),

@@ -6,9 +6,8 @@ import {
   beforeAll,
   afterAll,
   afterEach,
-  createMockedFunction,
 } from "matchstick-as/assembly/index";
-import { Address, BigInt, ethereum } from "@graphprotocol/graph-ts";
+import { Address, BigInt } from "@graphprotocol/graph-ts";
 import {
   handlePaymentEscrowed,
   handlePaymentFinalized,
@@ -27,6 +26,19 @@ import {
   createSpendingLimitSetEvent,
   createSpendingLimitCancelledEvent,
 } from "./evmai-agent-escrow-utils";
+import { FeeConfig } from "../generated/schema";
+
+// Seeds the singleton FeeConfig (all fees 0) so a handler can read the fee it charges
+// from the indexed entity instead of an eth_call. Callers set the specific fee + save().
+function seedFeeConfig(): FeeConfig {
+  let fc = new FeeConfig("singleton");
+  fc.promptFee = BigInt.fromI32(0);
+  fc.cancellationFee = BigInt.fromI32(0);
+  fc.metadataUpdateFee = BigInt.fromI32(0);
+  fc.branchFee = BigInt.fromI32(0);
+  fc.updatedAt = BigInt.fromI32(1);
+  return fc;
+}
 
 const USER_ADDRESS = "0x0000000000000000000000000000000000000001";
 const CONV_ID = "1";
@@ -131,15 +143,9 @@ describe("handlePromptCancelled (Escrow)", () => {
   beforeAll(() => {
     seedConversationAndRequest();
 
-    // The Escrow handler binds the contract and calls cancellationFee() as a
-    // live read. Matchstick requires all live reads to be mocked. The default
-    // newMockEvent() address is 0xa16081F360e3847006dB660bae1c6d1b2e17eC2A.
-    createMockedFunction(
-      Address.fromString("0xa16081F360e3847006dB660bae1c6d1b2e17eC2A"),
-      "cancellationFee",
-      "cancellationFee():(uint256)"
-    ).returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(100))]);
-
+    // The Escrow handler reads cancellationFee from the indexed FeeConfig (no eth_call).
+    // FeeConfig is intentionally left unset here — this block only asserts the handler
+    // does NOT touch PromptRequest; the fee amount is covered in the block below.
     let cancelEvent = createEscrowPromptCancelledEvent(
       Address.fromString(USER_ADDRESS),
       BigInt.fromString(ANSWER_MSG_ID)
@@ -390,11 +396,10 @@ describe("handlePromptCancelled (Escrow) — Activity details", () => {
   test("Activity amount is negative cancellationFee", () => {
     seedConversationAndRequest();
 
-    createMockedFunction(
-      Address.fromString("0xa16081F360e3847006dB660bae1c6d1b2e17eC2A"),
-      "cancellationFee",
-      "cancellationFee():(uint256)"
-    ).returns([ethereum.Value.fromUnsignedBigInt(BigInt.fromI32(300))]);
+    // The handler reads cancellationFee from the indexed FeeConfig, NOT via an eth_call.
+    let fc = seedFeeConfig();
+    fc.cancellationFee = BigInt.fromI32(300);
+    fc.save();
 
     let cancelEvent = createEscrowPromptCancelledEvent(
       Address.fromString(USER_ADDRESS),

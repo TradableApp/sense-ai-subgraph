@@ -1,6 +1,5 @@
 import { BigInt, store, Bytes, ethereum } from "@graphprotocol/graph-ts";
 import {
-  EVMAIAgentEscrow,
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
@@ -110,9 +109,14 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
 }
 
 export function handlePromptCancelled(event: PromptCancelled): void {
-  let contract = EVMAIAgentEscrow.bind(event.address);
-  // We fetch the fee from the contract state to record the cost
-  let cancellationFee = contract.cancellationFee();
+  // Read the cancellation fee from the indexed FeeConfig (populated by the *FeeUpdated
+  // events, incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls"
+  // best practice, and an eth_call also breaks graph-node↔Hardhat on localnet. Unset → 0.
+  let fees = FeeConfig.load("singleton");
+  let cancellationFee = BigInt.fromI32(0);
+  if (fees != null && fees.cancellationFee !== null) {
+    cancellationFee = fees.cancellationFee!;
+  }
 
   createActivity(event, event.params.user, "CANCEL", cancellationFee.neg());
 }
