@@ -98,7 +98,7 @@ Activity (immutable) — keyed by txHash-logIndex
 - **`Conversation.lastMessageCreatedAt` is bumped on any state change** (new message, cancellation, refund, metadata update) so the sync service always picks up the change.
 - **`Activity` is the unified audit trail** — every billable user action creates one. `amount` is negative for costs and positive for refunds (in wei). Types: `CONVERSATION`, `BRANCH`, `CANCEL`, `REFUND`, `PLAN_UPDATE`, `PLAN_REVOKE`, `METADATA_UPDATE`.
 - **`createActivity()` is duplicated** in both mapping files — this is intentional due to AssemblyScript's lack of cross-file shared helpers in The Graph's module system.
-- **Fees are read from contract state at index time** (e.g., `escrow.branchFee()`, `contract.cancellationFee()`) so the Activity reflects the actual fee charged.
+- **Fees are read from the indexed `FeeConfig` entity** (populated by the `*FeeUpdated` events, including on `initialize`) when recording `Activity.amount` — **not** via `eth_calls`. This follows [The Graph's "avoid eth_calls" best practice](https://thegraph.com/docs/en/subgraphs/best-practices/avoid-eth-calls/) and avoids a graph-node↔Hardhat localnet incompatibility (graph-node sends both `input` and `data` in `eth_call`; Hardhat 2.22+ rejects the duplicate, stalling indexing). If `FeeConfig` is unset (no fee event seen yet) the amount falls back to 0.
 
 ### Testing
 

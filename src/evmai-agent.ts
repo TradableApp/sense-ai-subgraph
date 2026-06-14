@@ -1,4 +1,4 @@
-import { BigInt, Bytes, ethereum, Address } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -14,9 +14,7 @@ import {
   OracleUpdated,
   AgentJobSubmitted,
   RegenerationRequested,
-  EVMAIAgent,
 } from "../generated/EVMAIAgent/EVMAIAgent";
-import { EVMAIAgentEscrow } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
 import {
   Conversation,
   Message,
@@ -26,6 +24,7 @@ import {
   ProtocolConfig,
   AgentJob,
   RegenerationRequest,
+  FeeConfig,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -46,11 +45,31 @@ function createActivity(
   activity.save();
 }
 
-// Helper to get the Escrow contract to read fees
-function getEscrowContract(agentAddress: Address): EVMAIAgentEscrow {
-  let agent = EVMAIAgent.bind(agentAddress);
-  let escrowAddress = agent.aiAgentEscrow();
-  return EVMAIAgentEscrow.bind(escrowAddress);
+// Read fees from the indexed FeeConfig singleton (populated by the *FeeUpdated events,
+// incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls" best practice,
+// and an eth_call also breaks graph-node↔Hardhat on localnet. Typed (not string-keyed) so
+// an unknown field can't silently fall through to 0. If FeeConfig is missing (the
+// initialize() fee events haven't been indexed — see tokenized-ai-agent #39), we log a
+// warning and fall back to 0: Activity is immutable, so a wrong amount can't be patched.
+function readBranchFee(): BigInt {
+  let fees = FeeConfig.load("singleton");
+  if (fees == null || fees.branchFee === null) {
+    log.warning("[handleBranchRequested] FeeConfig branchFee missing — defaulting to 0", []);
+    return BigInt.fromI32(0);
+  }
+  return fees.branchFee!;
+}
+
+function readMetadataUpdateFee(): BigInt {
+  let fees = FeeConfig.load("singleton");
+  if (fees == null || fees.metadataUpdateFee === null) {
+    log.warning(
+      "[handleMetadataUpdateRequested] FeeConfig metadataUpdateFee missing — defaulting to 0",
+      []
+    );
+    return BigInt.fromI32(0);
+  }
+  return fees.metadataUpdateFee!;
 }
 
 export function handleConversationAdded(event: ConversationAdded): void {
@@ -211,21 +230,15 @@ export function handlePromptCancelled(event: PromptCancelled): void {
 // --- Activity Handlers for Direct Actions ---
 
 export function handleBranchRequested(event: BranchRequested): void {
-  // Capture fee from Escrow contract state
-  let escrow = getEscrowContract(event.address);
-  let fee = escrow.branchFee();
-
+  let fee = readBranchFee();
   createActivity(event, event.params.user, "BRANCH", fee.neg());
 }
 
 export function handleMetadataUpdateRequested(
   event: MetadataUpdateRequested
 ): void {
-  // Capture fee from Escrow contract state
-  let escrow = getEscrowContract(event.address);
-  let fee = escrow.metadataUpdateFee();
-
   // Encrypted payload means we don't know if it's rename or delete here
+  let fee = readMetadataUpdateFee();
   createActivity(event, event.params.user, "METADATA_UPDATE", fee.neg());
 }
 
