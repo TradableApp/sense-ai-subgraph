@@ -414,4 +414,23 @@ describe("handlePromptCancelled (Escrow) — Activity details", () => {
     assert.fieldEquals("Activity", id, "type", "CANCEL");
     assert.fieldEquals("Activity", id, "amount", "-300");
   });
+
+  test("Activity amount falls back to 0 when FeeConfig is not yet indexed", () => {
+    // FeeConfig deliberately NOT seeded (the initialize() fee events haven't been indexed
+    // yet). The handler logs a warning and records 0 rather than reverting/crashing.
+    seedConversationAndRequest();
+
+    let cancelEvent = createEscrowPromptCancelledEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(ANSWER_MSG_ID)
+    );
+    handlePromptCancelled(cancelEvent);
+
+    let id =
+      cancelEvent.transaction.hash.toHexString() +
+      "-" +
+      cancelEvent.logIndex.toString();
+    assert.fieldEquals("Activity", id, "type", "CANCEL");
+    assert.fieldEquals("Activity", id, "amount", "0");
+  });
 });

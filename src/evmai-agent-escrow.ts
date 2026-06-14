@@ -1,4 +1,4 @@
-import { BigInt, store, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { BigInt, store, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import {
   PaymentEscrowed,
   PaymentFinalized,
@@ -111,10 +111,17 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
 export function handlePromptCancelled(event: PromptCancelled): void {
   // Read the cancellation fee from the indexed FeeConfig (populated by the *FeeUpdated
   // events, incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls"
-  // best practice, and an eth_call also breaks graph-node↔Hardhat on localnet. Unset → 0.
+  // best practice, and an eth_call also breaks graph-node↔Hardhat on localnet. If
+  // FeeConfig is missing (initialize() fee events not yet indexed — tokenized-ai-agent
+  // #39) we warn and fall back to 0; Activity is immutable, so a wrong amount can't be patched.
   let fees = FeeConfig.load("singleton");
   let cancellationFee = BigInt.fromI32(0);
-  if (fees != null && fees.cancellationFee !== null) {
+  if (fees == null || fees.cancellationFee === null) {
+    log.warning(
+      "[handlePromptCancelled] FeeConfig cancellationFee missing — defaulting to 0",
+      []
+    );
+  } else {
     cancellationFee = fees.cancellationFee!;
   }
 

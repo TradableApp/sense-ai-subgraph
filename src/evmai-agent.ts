@@ -1,4 +1,4 @@
-import { BigInt, Bytes, ethereum } from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -45,16 +45,31 @@ function createActivity(
   activity.save();
 }
 
-// Reads a fee from the indexed FeeConfig singleton (populated by the *FeeUpdated events,
+// Read fees from the indexed FeeConfig singleton (populated by the *FeeUpdated events,
 // incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls" best practice,
-// and an eth_call also breaks graph-node↔Hardhat on localnet. Missing/unset → 0.
-function readFee(field: string): BigInt {
+// and an eth_call also breaks graph-node↔Hardhat on localnet. Typed (not string-keyed) so
+// an unknown field can't silently fall through to 0. If FeeConfig is missing (the
+// initialize() fee events haven't been indexed — see tokenized-ai-agent #39), we log a
+// warning and fall back to 0: Activity is immutable, so a wrong amount can't be patched.
+function readBranchFee(): BigInt {
   let fees = FeeConfig.load("singleton");
-  if (fees == null) return BigInt.fromI32(0);
-  let value: BigInt | null = null;
-  if (field == "branch") value = fees.branchFee;
-  else if (field == "metadata") value = fees.metadataUpdateFee;
-  return value !== null ? value : BigInt.fromI32(0);
+  if (fees == null || fees.branchFee === null) {
+    log.warning("[handleBranchRequested] FeeConfig branchFee missing — defaulting to 0", []);
+    return BigInt.fromI32(0);
+  }
+  return fees.branchFee!;
+}
+
+function readMetadataUpdateFee(): BigInt {
+  let fees = FeeConfig.load("singleton");
+  if (fees == null || fees.metadataUpdateFee === null) {
+    log.warning(
+      "[handleMetadataUpdateRequested] FeeConfig metadataUpdateFee missing — defaulting to 0",
+      []
+    );
+    return BigInt.fromI32(0);
+  }
+  return fees.metadataUpdateFee!;
 }
 
 export function handleConversationAdded(event: ConversationAdded): void {
@@ -215,7 +230,7 @@ export function handlePromptCancelled(event: PromptCancelled): void {
 // --- Activity Handlers for Direct Actions ---
 
 export function handleBranchRequested(event: BranchRequested): void {
-  let fee = readFee("branch");
+  let fee = readBranchFee();
   createActivity(event, event.params.user, "BRANCH", fee.neg());
 }
 
@@ -223,7 +238,7 @@ export function handleMetadataUpdateRequested(
   event: MetadataUpdateRequested
 ): void {
   // Encrypted payload means we don't know if it's rename or delete here
-  let fee = readFee("metadata");
+  let fee = readMetadataUpdateFee();
   createActivity(event, event.params.user, "METADATA_UPDATE", fee.neg());
 }
 
