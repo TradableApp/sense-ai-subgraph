@@ -67,3 +67,4 @@ tests/.latest.json
 .dmux/
 .dmux-hooks/
 .dmux-session/
+.claude/PRPs/
