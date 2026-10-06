@@ -28,6 +28,18 @@ data/
 ipfs/
 postgres/
 
+# Per-machine compose overrides. docker-compose picks this file up automatically, so a committed
+# one silently rewrites everyone else's volume paths — which is exactly what it is used for here:
+# relocating the ipfs and postgres volumes to /tmp so macOS does not write AppleDouble (._*) files
+# onto an ExFAT external drive, where they make IPFS and Postgres fail at startup. That is a fact
+# about one machine's disks, not about this project.
+#
+# The existing override file already carried the line "It is gitignored — do not commit it", which
+# was not true: nothing ignored it, and it had been sitting untracked waiting to be swept into an
+# unrelated `git add -A`.
+docker-compose.override.yml
+docker-compose.override.yaml
+
 # dotenv environment variables file
 .env
 .env.*
