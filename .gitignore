@@ -28,6 +28,15 @@ data/
 ipfs/
 postgres/
 
+# Per-machine compose overrides. Compose loads these automatically, so a committed one silently
+# rewrites every other developer's volume paths. All four names, because the override filename is
+# chosen independently of the base file: Compose v2 also auto-loads the Compose Spec's shorter
+# `compose.override.*` even though the base here is `docker-compose.yml`.
+docker-compose.override.yml
+docker-compose.override.yaml
+compose.override.yml
+compose.override.yaml
+
 # dotenv environment variables file
 .env
 .env.*
