@@ -17,13 +17,16 @@
     "deploy:testnet": "bun run prepare:testnet && bun run codegen && bun run build && graph deploy sense-ai-testnet",
     "deploy:mainnet": "bun run prepare:mainnet && bun run codegen && bun run build && graph deploy sense-ai",
     "// --- TESTING ---": "---",
-    "test": "graph test"
+    "parity:testnet": "NETWORK=base-testnet node scripts/parity-probe.js",
+    "test": "graph test && bun run test:scripts",
+    "test:scripts": "node --test \"scripts/**/*.test.js\""
   },
   "dependencies": {
     "@graphprotocol/graph-cli": "0.98.1",
     "@graphprotocol/graph-ts": "0.37.0"
   },
   "devDependencies": {
+    "@noble/hashes": "^2.4.0",
     "matchstick-as": "0.6.0",
     "mustache": "^4.2.0"
   }

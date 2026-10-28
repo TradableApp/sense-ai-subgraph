@@ -107,6 +107,30 @@ Deploys the production version using the slug **`sense-ai`**.
 4.  **Publish (Studio Only):**
     After deploying to the Studio, you can click "Publish" in the dashboard to migrate the subgraph to the decentralized network. This requires ETH (Base) and GRT.
 
+## 🔍 Live indexing-parity probe
+
+Matchstick tests the mappings offline; `scripts/parity-probe.js` checks a LIVE deployment. For a
+block range it reads the four money-path events from the RPC (`PromptSubmitted`,
+`AnswerMessageAdded`, `PaymentEscrowed`, `PaymentFinalized`) and compares them with what the
+subgraph indexed (`PromptRequest`, assistant `Message`, `Payment`), naming every id that is
+missing from the index or present without a chain event.
+
+```bash
+# Base Sepolia, explicit window
+FROM_BLOCK=48212900 TO_BLOCK=48216700 \
+RPC_URL=https://sepolia.base.org \
+GRAPH_URL=https://api.studio.thegraph.com/query/<org>/sense-ai-testnet/version/latest \
+node scripts/parity-probe.js
+
+# The sense-ai-e2e run-day runner's stage (reads its TESTNET_* exports; TO_BLOCK = chain head)
+bun run parity:testnet
+```
+
+Exit 0 means parity; 1 lists the gaps (or the subgraph head never reached the window's end within
+`PARITY_HEAD_WAIT_MS`, default 3 min); 2 is a configuration or network error. `PARITY_REPORT_FILE`
+writes the same result as JSON. Its contract tests (`bun run test:scripts`) run offline on a
+recording of real Base Sepolia logs and the matching Studio entities in `scripts/fixtures/`.
+
 ## 📂 Project Structure
 
 - `abis/`: Contract ABIs (copied from Hardhat artifacts).
@@ -117,3 +141,4 @@ Deploys the production version using the slug **`sense-ai`**.
   - `evmai-agent-escrow.ts`: Handles payments and spending limits.
 - `subgraph.template.yaml`: The master configuration template.
 - `tests/`: Unit tests for mapping logic (`bun run test`).
+- `scripts/`: Node tooling — localnet config generation and the live parity probe with its `node:test` suite and recorded fixture (`bun run test:scripts`).
