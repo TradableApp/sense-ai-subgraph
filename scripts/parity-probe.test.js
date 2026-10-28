@@ -222,7 +222,7 @@ describe('runProbe (against the recording served by a fake network)', () => {
     const fetchImpl = async (url, init) => {
       const body = JSON.parse(init.body);
       const json = (x) => ({ ok: true, status: 200, json: async () => x });
-      if (url.startsWith('https://rpc.example')) {
+      if (new URL(url).host === 'rpc.example') {
         calls.rpc.push(body);
         const { method, params } = body;
         if (method === 'eth_blockNumber') return json({ jsonrpc: '2.0', id: body.id, result: `0x${(FIXTURE.toBlock + 10).toString(16)}` });
