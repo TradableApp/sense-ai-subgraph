@@ -41,6 +41,8 @@ const DEFAULT_LOG_CHUNK = 200;
 const DEFAULT_HEAD_WAIT_MS = 180_000;
 const DEFAULT_HEAD_POLL_MS = 5_000;
 const GRAPH_PAGE = 1000;
+/** graph-node refuses `skip` above this; past it the window has to be narrowed, not paged. */
+const GRAPH_SKIP_LIMIT = 5000;
 
 const topicOf = (signature) =>
   `0x${Buffer.from(keccak_256(new TextEncoder().encode(signature))).toString('hex')}`;
@@ -100,6 +102,31 @@ function decodeLogs(logs, { agent, escrow }) {
     }
   }
   return out;
+}
+
+// ── Graph paging ───────────────────────────────────────────────────────────────────────────────
+/**
+ * Fetch every entity of one type in a window, page by page.
+ *
+ * Offset paging (`skip`), NOT an `id_gt` cursor: entity ids here are decimal strings ("95",
+ * "100") and The Graph compares `ID` values lexicographically, so a cursor of "97" would skip
+ * "100" and every longer id after it — a silent gap in the one tool whose job is finding gaps.
+ * `orderBy: createdAt` is stable across pages (createdAt never changes; graph-node breaks ties by
+ * id). graph-node caps `skip` at GRAPH_SKIP_LIMIT, so a window with more than
+ * GRAPH_SKIP_LIMIT + GRAPH_PAGE entities fails loudly instead of truncating.
+ */
+async function pageAll(graph, { entity, fields, where }) {
+  const all = [];
+  for (let skip = 0; ; skip += GRAPH_PAGE) {
+    if (skip > GRAPH_SKIP_LIMIT)
+      throw new Error(
+        `parity: more than ${GRAPH_SKIP_LIMIT + GRAPH_PAGE} ${entity} in the window — graph-node caps skip at ${GRAPH_SKIP_LIMIT}; narrow the block window (FROM_BLOCK/TO_BLOCK) and run the probe per slice`,
+      );
+    const data = await graph(`{ ${entity}(first: ${GRAPH_PAGE}, skip: ${skip}, orderBy: createdAt, orderDirection: asc, where: { ${where} }) { ${fields} } }`);
+    const page = data[entity] || [];
+    all.push(...page);
+    if (page.length < GRAPH_PAGE) return all;
+  }
 }
 
 // ── Comparison ─────────────────────────────────────────────────────────────────────────────────
@@ -218,6 +245,13 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
   }
   const chunk = env.PARITY_LOG_CHUNK ? parseBlock(env.PARITY_LOG_CHUNK) : DEFAULT_LOG_CHUNK;
   if (Number.isNaN(chunk) || chunk < 1) problems.push('PARITY_LOG_CHUNK must be a positive integer');
+  // Validated like the block params, and `!== ''` rather than truthiness: "0" is a legitimate
+  // "do not wait", and an unparseable value must fail here — NaN would silently skip the wait loop.
+  const given = (name) => env[name] !== undefined && env[name] !== '';
+  const headWaitMs = given('PARITY_HEAD_WAIT_MS') ? parseBlock(env.PARITY_HEAD_WAIT_MS) : DEFAULT_HEAD_WAIT_MS;
+  if (Number.isNaN(headWaitMs)) problems.push('PARITY_HEAD_WAIT_MS must be a non-negative integer (milliseconds)');
+  const headPollMs = given('PARITY_HEAD_POLL_MS') ? parseBlock(env.PARITY_HEAD_POLL_MS) : DEFAULT_HEAD_POLL_MS;
+  if (Number.isNaN(headPollMs) || headPollMs < 1) problems.push('PARITY_HEAD_POLL_MS must be a positive integer (milliseconds)');
   if (problems.length) throw new Error(`parity: configuration —\n  ${problems.join('\n  ')}`);
   return {
     network,
@@ -228,8 +262,8 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
     agent: cfg.EVMAIAgent.address,
     escrow: cfg.EVMAIAgentEscrow.address,
     chunk,
-    headWaitMs: env.PARITY_HEAD_WAIT_MS ? Number(env.PARITY_HEAD_WAIT_MS) : DEFAULT_HEAD_WAIT_MS,
-    headPollMs: env.PARITY_HEAD_POLL_MS ? Number(env.PARITY_HEAD_POLL_MS) : DEFAULT_HEAD_POLL_MS,
+    headWaitMs,
+    headPollMs,
     reportFile: env.PARITY_REPORT_FILE || null,
   };
 }
@@ -300,17 +334,7 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
   }
 
   const window = `createdAt_gte: ${fromTs}, createdAt_lte: ${toTs}`;
-  const fetchAll = async (entity, fields) => {
-    const all = [];
-    let cursor = '';
-    for (;;) {
-      const data = await graph(`{ ${entity}(first: ${GRAPH_PAGE}, orderBy: id, where: { ${window}, id_gt: "${cursor}" }) { ${fields} } }`);
-      const page = data[entity] || [];
-      all.push(...page);
-      if (page.length < GRAPH_PAGE) return all;
-      cursor = page[page.length - 1].id;
-    }
-  };
+  const fetchAll = (entity, fields) => pageAll(graph, { entity, fields, where: window });
   const entities = {
     promptRequests: await fetchAll('promptRequests', 'id promptMessageId user isAnswered isCancelled isRefunded createdAt transactionHash'),
     messages: await fetchAll('messages', 'id messageId role createdAt transactionHash'),
@@ -357,4 +381,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { EVENTS, decodeLogs, compare, blockRanges, resolveConfig, redactUrl, runProbe };
+module.exports = { EVENTS, decodeLogs, compare, blockRanges, pageAll, resolveConfig, redactUrl, runProbe };

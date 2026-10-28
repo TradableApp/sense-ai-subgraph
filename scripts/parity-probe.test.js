@@ -207,6 +207,51 @@ describe('resolveConfig', () => {
     );
     assert.throws(() => probe.resolveConfig({ NETWORK: 'base-testnet', RPC_URL: 'x', GRAPH_URL: 'y', FROM_BLOCK: 'abc' }, { readConfig }), /FROM_BLOCK/);
   });
+
+  it('validates the head-wait knobs: "0" means no wait, garbage fails by name, a zero poll is refused', () => {
+    const base = { NETWORK: 'base-testnet', RPC_URL: 'x', GRAPH_URL: 'y', FROM_BLOCK: '1' };
+    assert.equal(probe.resolveConfig({ ...base, PARITY_HEAD_WAIT_MS: '0' }, { readConfig }).headWaitMs, 0);
+    assert.equal(probe.resolveConfig({ ...base }, { readConfig }).headWaitMs, 180_000);
+    assert.throws(() => probe.resolveConfig({ ...base, PARITY_HEAD_WAIT_MS: 'abc' }, { readConfig }), /PARITY_HEAD_WAIT_MS/);
+    assert.throws(() => probe.resolveConfig({ ...base, PARITY_HEAD_POLL_MS: '0' }, { readConfig }), /PARITY_HEAD_POLL_MS/);
+    assert.equal(probe.resolveConfig({ ...base, PARITY_HEAD_POLL_MS: '250' }, { readConfig }).headPollMs, 250);
+  });
+});
+
+describe('pageAll', () => {
+  /** A fake Graph endpoint that honours first/skip over `rows`, in createdAt order. */
+  const fakeGraph = (rows) => {
+    const queries = [];
+    const graph = async (q) => {
+      queries.push(q);
+      const first = Number(/first: (\d+)/.exec(q)[1]);
+      const skip = Number(/skip: (\d+)/.exec(q)[1]);
+      return { payments: rows.slice(skip, skip + first) };
+    };
+    return { graph, queries };
+  };
+
+  it('returns every entity across page boundaries, including ids that sort lexicographically before the cursor', async () => {
+    // 2,500 decimal ids: "100" < "97" as strings, so an id_gt cursor of "97" would have skipped
+    // every id of three or more digits. Offset paging must not care.
+    const rows = Array.from({ length: 2500 }, (_, i) => ({ id: String(i + 1), createdAt: String(1_700_000_000 + i) }));
+    const { graph, queries } = fakeGraph(rows);
+    const all = await probe.pageAll(graph, { entity: 'payments', fields: 'id createdAt', where: 'createdAt_gte: 0' });
+    assert.equal(all.length, 2500);
+    assert.deepEqual(all.map((r) => r.id).slice(95, 101), ['96', '97', '98', '99', '100', '101']);
+    assert.equal(queries.length, 3); // 1000 + 1000 + 500
+    assert.ok(queries.every((q) => !q.includes('id_gt')), 'no lexicographic cursor');
+    assert.ok(queries.every((q) => q.includes('orderBy: createdAt')), 'stable order across pages');
+  });
+
+  it('fails loudly instead of truncating when the window exceeds the graph-node skip cap', async () => {
+    const rows = Array.from({ length: 7000 }, (_, i) => ({ id: String(i + 1) }));
+    const { graph } = fakeGraph(rows);
+    await assert.rejects(
+      probe.pageAll(graph, { entity: 'payments', fields: 'id', where: 'createdAt_gte: 0' }),
+      /more than 6000 payments.*narrow the block window/s,
+    );
+  });
 });
 
 describe('runProbe (against the recording served by a fake network)', () => {
