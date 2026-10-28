@@ -208,6 +208,14 @@ describe('resolveConfig', () => {
     assert.throws(() => probe.resolveConfig({ NETWORK: 'base-testnet', RPC_URL: 'x', GRAPH_URL: 'y', FROM_BLOCK: 'abc' }, { readConfig }), /FROM_BLOCK/);
   });
 
+  it('names a config file whose contract addresses are missing, in the same throw as the env problems', () => {
+    const flat = () => ({ EVMAIAgent: {} });
+    assert.throws(
+      () => probe.resolveConfig({ NETWORK: 'base-testnet', RPC_URL: 'x', GRAPH_URL: 'y', FROM_BLOCK: '1' }, { readConfig: flat }),
+      /config\/base-testnet\.json is missing EVMAIAgent\.address[\s\S]*EVMAIAgentEscrow\.address/,
+    );
+  });
+
   it('validates the head-wait knobs: "0" means no wait, garbage fails by name, a zero poll is refused', () => {
     const base = { NETWORK: 'base-testnet', RPC_URL: 'x', GRAPH_URL: 'y', FROM_BLOCK: '1' };
     assert.equal(probe.resolveConfig({ ...base, PARITY_HEAD_WAIT_MS: '0' }, { readConfig }).headWaitMs, 0);
@@ -244,6 +252,15 @@ describe('pageAll', () => {
     assert.ok(queries.every((q) => q.includes('orderBy: createdAt')), 'stable order across pages');
   });
 
+  it('drops a duplicate that an unstable tie split across a page boundary would produce', async () => {
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ id: String(i + 1) }));
+    const pages = [rows, [rows[999], { id: '1001' }]]; // the last row of page 1 comes back first on page 2
+    const graph = async () => ({ payments: pages.shift() || [] });
+    const all = await probe.pageAll(graph, { entity: 'payments', fields: 'id', where: 'createdAt_gte: 0' });
+    assert.equal(all.length, 1001);
+    assert.equal(new Set(all.map((r) => r.id)).size, 1001);
+  });
+
   it('fails loudly instead of truncating when the window exceeds the graph-node skip cap', async () => {
     const rows = Array.from({ length: 7000 }, (_, i) => ({ id: String(i + 1) }));
     const { graph } = fakeGraph(rows);
@@ -262,7 +279,7 @@ describe('runProbe (against the recording served by a fake network)', () => {
   });
 
   /** Fake fetch: a JSON-RPC node serving the recording and a Graph endpoint serving `entities`. */
-  function fakeNetwork({ entities = clone(FIXTURE.entities), head = FIXTURE.graph_meta.block.number } = {}) {
+  function fakeNetwork({ entities = clone(FIXTURE.entities), head = FIXTURE.graph_meta.block.number, missingBlock } = {}) {
     const calls = { rpc: [], graph: [] };
     const fetchImpl = async (url, init) => {
       const body = JSON.parse(init.body);
@@ -273,6 +290,7 @@ describe('runProbe (against the recording served by a fake network)', () => {
         if (method === 'eth_blockNumber') return json({ jsonrpc: '2.0', id: body.id, result: `0x${(FIXTURE.toBlock + 10).toString(16)}` });
         if (method === 'eth_getBlockByNumber') {
           const n = parseInt(params[0], 16);
+          if (n === missingBlock) return json({ jsonrpc: '2.0', id: body.id, result: null }); // reorged away
           const ts = n <= FIXTURE.fromBlock ? FIXTURE.fromTimestamp : FIXTURE.toTimestamp;
           return json({ jsonrpc: '2.0', id: body.id, result: { number: params[0], timestamp: `0x${ts.toString(16)}` } });
         }
@@ -339,6 +357,14 @@ describe('runProbe (against the recording served by a fake network)', () => {
     assert.equal(r.report.toBlock, FIXTURE.toBlock + 10);
     assert.doesNotMatch(lines.join('\n'), /secretkey/);
     assert.ok(lines.some((l) => l.includes('rpc.example')), 'the host is still named');
+  });
+
+  it('names the block when the node no longer has it (reorg) instead of dereferencing null', async () => {
+    const net = fakeNetwork({ missingBlock: FIXTURE.toBlock });
+    await assert.rejects(
+      probe.runProbe(config(), { fetchImpl: net.fetchImpl, log: () => {}, sleep: async () => {} }),
+      new RegExp(`block ${FIXTURE.toBlock} not found.*reorganised`),
+    );
   });
 
   it('writes the JSON report when a path is given', async () => {

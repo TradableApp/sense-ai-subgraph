@@ -125,8 +125,12 @@ async function pageAll(graph, { entity, fields, where }) {
     const data = await graph(`{ ${entity}(first: ${GRAPH_PAGE}, skip: ${skip}, orderBy: createdAt, orderDirection: asc, where: { ${where} }) { ${fields} } }`);
     const page = data[entity] || [];
     all.push(...page);
-    if (page.length < GRAPH_PAGE) return all;
+    if (page.length < GRAPH_PAGE) break;
   }
+  // Same-block entities share a createdAt; graph-node orders ties by id, but that is its SQL, not a
+  // documented guarantee. If a page boundary ever split a tie group unstably, the result would be
+  // a duplicate (dropped here) or a skip (reported as a gap, i.e. loudly) — never a silent pass.
+  return [...new Map(all.map((e) => [String(e.id), e])).values()];
 }
 
 // ── Comparison ─────────────────────────────────────────────────────────────────────────────────
@@ -252,6 +256,12 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
   if (Number.isNaN(headWaitMs)) problems.push('PARITY_HEAD_WAIT_MS must be a non-negative integer (milliseconds)');
   const headPollMs = given('PARITY_HEAD_POLL_MS') ? parseBlock(env.PARITY_HEAD_POLL_MS) : DEFAULT_HEAD_POLL_MS;
   if (Number.isNaN(headPollMs) || headPollMs < 1) problems.push('PARITY_HEAD_POLL_MS must be a positive integer (milliseconds)');
+  // The network config is a file, not an env var, but a missing key fails the same way: by name,
+  // in the same throw, instead of a TypeError after the env checks passed.
+  const agent = cfg?.EVMAIAgent?.address;
+  const escrow = cfg?.EVMAIAgentEscrow?.address;
+  if (!agent) problems.push(`config/${network}.json is missing EVMAIAgent.address`);
+  if (!escrow) problems.push(`config/${network}.json is missing EVMAIAgentEscrow.address`);
   if (problems.length) throw new Error(`parity: configuration —\n  ${problems.join('\n  ')}`);
   return {
     network,
@@ -259,8 +269,8 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
     graphUrl,
     fromBlock,
     toBlock,
-    agent: cfg.EVMAIAgent.address,
-    escrow: cfg.EVMAIAgentEscrow.address,
+    agent,
+    escrow,
     chunk,
     headWaitMs,
     headPollMs,
@@ -324,9 +334,14 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
     return finish({ ...report, headLag: toBlock - graphHead, gaps: [], exitCode: 1 }, config, log);
   }
 
-  const [fromTs, toTs] = await Promise.all(
-    [fromBlock, toBlock].map(async (n) => parseInt((await rpc('eth_getBlockByNumber', [toHex(n), false])).timestamp, 16)),
-  );
+  // eth_getBlockByNumber answers null for a block the node does not have — TO_BLOCK was the head a
+  // moment ago and a reorg can have taken it. Name the block rather than dereferencing null.
+  const blockTimestamp = async (n) => {
+    const block = await rpc('eth_getBlockByNumber', [toHex(n), false]);
+    if (!block) throw new Error(`parity: block ${n} not found on the node — the chain may have reorganised; re-run`);
+    return parseInt(block.timestamp, 16);
+  };
+  const [fromTs, toTs] = await Promise.all([fromBlock, toBlock].map(blockTimestamp));
 
   const logs = [];
   for (const [a, b] of blockRanges(fromBlock, toBlock, config.chunk)) {
