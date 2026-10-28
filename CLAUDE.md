@@ -21,7 +21,9 @@ The Graph subgraph for indexing SenseAI on-chain data. Provides a GraphQL API fo
 | `bun run deploy-local` | Prepare + codegen + build + deploy locally |
 | `bun run deploy:testnet` | Deploy to The Graph Studio (testnet) |
 | `bun run deploy:mainnet` | Deploy to The Graph Studio (mainnet) |
-| `bun run test` | Run all subgraph tests (matchstick-as) |
+| `bun run test` | Run all subgraph tests (matchstick-as) and the Node script tests |
+| `bun run test:scripts` | Node `node:test` suites under `scripts/` (parity probe contract tests, no network) |
+| `bun run parity:testnet` | Live indexing-parity probe against Base Sepolia (`scripts/parity-probe.js`) — the sense-ai-e2e run-day stage |
 
 There is no single-test command — `graph test` runs all tests via matchstick-as.
 
@@ -105,6 +107,21 @@ Activity (immutable) — keyed by txHash-logIndex
 Tests use `matchstick-as` (The Graph's unit testing framework). Test files live in `tests/`:
 - `evmai-agent.test.ts` — handler tests using mock events
 - `evmai-agent-utils.ts` — mock event factory helpers
+
+### Live indexing-parity probe
+
+`scripts/parity-probe.js` is the only live check of the subgraph (matchstick covers mapping logic
+offline). Over a block range it pulls `PromptSubmitted`, `AnswerMessageAdded`, `PaymentEscrowed`
+and `PaymentFinalized` from the RPC and compares ids and fields against `PromptRequest`, assistant
+`Message` and `Payment` in BOTH directions (events never indexed, entities never emitted), after
+waiting for the subgraph head to reach the window's end. Ids are the mappings' decimal strings;
+`escrowId == answerMessageId == assistant Message id`. Env: `RPC_URL`/`GRAPH_URL`/`FROM_BLOCK`
+(or the runner's `TESTNET_RPC_URL`/`TESTNET_GRAPH_URL`/`TESTNET_RUN_FROM_BLOCK`), optional
+`TO_BLOCK` (default chain head), `PARITY_LOG_CHUNK` (default 200 — the public Base Sepolia RPC
+refuses wider `eth_getLogs`), `PARITY_REPORT_FILE`. Exit 0 parity, 1 gaps or head lag (each gap
+named by kind and id), 2 configuration/network error. The RPC URL is never printed beyond its
+host. Contract tests run on a recording of Base Sepolia blocks 48212900-48216700
+(`scripts/fixtures/`); re-record with the same shape if the schema's ids ever change.
 
 ### Event → Handler Map
 
