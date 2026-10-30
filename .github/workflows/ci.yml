@@ -13,7 +13,9 @@ concurrency:
 jobs:
   CI:
     name: CI
-    runs-on: ubuntu-latest
+    # Pinned: graph-cli's matchstick fetcher only ships Linux 22/24 binaries, and
+    # ubuntu-latest moved to 26 on 2026-10-30 ("Unsupported platform: Linux x64 26").
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:

@@ -15,7 +15,6 @@
 │   ├── EVMAIAgentEscrow
 │   │   └── EVMAIAgentEscrow.ts
 │   └── schema.ts
-├── networks.json
 ├── package-lock.json
 ├── package.json
 ├── README.md
@@ -32,4 +31,4 @@
 ├── tsconfig.json
 └── yarn.lock
 
-8 directories, 25 files
+8 directories, 24 files

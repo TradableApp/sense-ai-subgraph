@@ -68,10 +68,10 @@ Deploys to **The Graph Studio** using the slug `sense-ai-testnet`.
     ```
 
 3.  **Deploy:**
-    This script compiles the code using `config/base-testnet.json` and pushes it to the Studio.
+    This script compiles the code using `config/base-testnet.json` and pushes it to the Studio. The version label comes from `SUBGRAPH_VERSION` (so nothing prompts, and the run is reproducible); the guard refuses if it is unset.
 
     ```bash
-    bun run deploy:testnet
+    SUBGRAPH_VERSION=v0.4.0 bun run deploy:testnet
     ```
 
 4.  **Update Frontend:**
@@ -86,7 +86,7 @@ Deploys to **The Graph Studio** using the slug `sense-ai-testnet`.
 
 Deploys the production version using the slug **`sense-ai`**.
 
-**Prerequisite:** Ensure `config/base-mainnet.json` contains the correct production contract addresses.
+**Prerequisite:** Ensure `config/base-mainnet.json` contains the correct production contract addresses and start blocks. The committed file holds `0xYOUR_…` placeholders and `startBlock: 12345678` until the mainnet contracts exist, and `scripts/deploy-guard.js` refuses to deploy while any remain.
 
 1.  **Create Subgraph:**
     Create a subgraph named **`sense-ai`** in the Studio (or your custom Graph Node).
@@ -99,9 +99,10 @@ Deploys the production version using the slug **`sense-ai`**.
     ```
 
 3.  **Deploy:**
+    The `sense-ai` slug is production, so the guard also needs an explicit confirm (exactly `1`; `true`/`yes` are rejected):
 
     ```bash
-    bun run deploy:mainnet
+    DEPLOY_MAINNET_CONFIRMED=1 SUBGRAPH_VERSION=v1.0.0 bun run deploy:mainnet
     ```
 
 4.  **Publish (Studio Only):**
