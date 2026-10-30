@@ -57,6 +57,8 @@ describe("findPlaceholders", () => {
     assert.ok(problems.some((p) => p.includes("EVMAIAgent.address")));
     assert.ok(problems.some((p) => p.includes("EVMAIAgentEscrow.address")));
     assert.ok(problems.some((p) => p.includes("EVMAIAgent.startBlock")));
+    assert.ok(problems.some((p) => p.includes("EVMAIAgentEscrow.startBlock")));
+    assert.equal(problems.length, 4);
   });
 
   it("flags a well-formed address next to a placeholder start block", () => {

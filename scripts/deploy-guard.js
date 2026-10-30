@@ -87,7 +87,7 @@ function configPathFor(target) {
   const spec = TARGETS[target];
   if (!spec)
     throw new Error(
-      `deploy-guard: target must be testnet|mainnet (got ${JSON.stringify(target)})`,
+      `target must be testnet|mainnet (got ${JSON.stringify(target)})`,
     );
   return spec.config;
 }
@@ -119,7 +119,14 @@ function main() {
   const target = process.argv[2];
   const readConfig = (relative) =>
     JSON.parse(fs.readFileSync(path.join(__dirname, "..", relative), "utf8"));
-  const result = run(target, process.env, readConfig);
+  let result;
+  try {
+    result = run(target, process.env, readConfig);
+  } catch (err) {
+    // Unknown target or unreadable config: one line, same shape as a refusal, no stack trace.
+    console.error(`deploy-guard: ${err.message}`);
+    process.exit(1);
+  }
   if (!result.ok) {
     console.error(`deploy:${target} refused (Studio slug ${result.slug}):`);
     for (const problem of result.problems) console.error(`  - ${problem}`);
