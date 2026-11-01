@@ -238,9 +238,9 @@ The graph-node container reaches the host Hardhat node via `host.docker.internal
 
 ## Key Notes
 
-- `deploy:mainnet` is the production The Graph Studio deployment — confirm before running
+- `deploy:testnet` / `deploy:mainnet` run `scripts/deploy-guard.js` first: both need `SUBGRAPH_VERSION=vX.Y.Z` (passed as `--version-label`, so `graph deploy` never prompts); mainnet additionally refuses while `config/base-mainnet.json` holds placeholders and unless `DEPLOY_MAINNET_CONFIRMED=1` is exported — the `sense-ai` slug is production
 - Local Graph node must be running (docker-compose) for `deploy-local`
-- `networks.json` at root is used by Graph CLI for multi-network deployments (separate from `config/*.json`)
+- `config/*.json` + `subgraph.template.yaml` (mustache) is the only source of addresses and start blocks; there is deliberately no `networks.json` (it was a second copy that drifted)
 - `generated/` and `build/` are output directories — never edit manually
 - `createActivity()` is intentionally duplicated in both `evmai-agent.ts` and `evmai-agent-escrow.ts` — AssemblyScript's module system in The Graph does not allow cross-file shared helpers
 
