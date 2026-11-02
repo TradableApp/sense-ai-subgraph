@@ -279,7 +279,7 @@ describe('runProbe (against the recording served by a fake network)', () => {
   });
 
   /** Fake fetch: a JSON-RPC node serving the recording and a Graph endpoint serving `entities`. */
-  function fakeNetwork({ entities = clone(FIXTURE.entities), head = FIXTURE.graph_meta.block.number, missingBlock } = {}) {
+  function fakeNetwork({ entities = clone(FIXTURE.entities), head = FIXTURE.graph_meta.block.number, missingBlock, logLimit } = {}) {
     const calls = { rpc: [], graph: [] };
     const fetchImpl = async (url, init) => {
       const body = JSON.parse(init.body);
@@ -297,6 +297,10 @@ describe('runProbe (against the recording served by a fake network)', () => {
         if (method === 'eth_getLogs') {
           const [{ fromBlock, toBlock }] = params;
           const a = parseInt(fromBlock, 16); const b = parseInt(toBlock, 16);
+          // Alchemy's shape: HTTP 400 and a JSON-RPC error that states the plan's limit.
+          if (logLimit && b - a + 1 > logLimit) {
+            return { ok: false, status: 400, json: async () => ({ jsonrpc: '2.0', id: body.id, error: { code: -32600, message: `Under the Free tier plan, you can make eth_getLogs requests with up to a ${logLimit} block range. Based on your parameters, this block range should work: [${fromBlock}, 0x0]. Upgrade to PAYG for expanded limits.` } }) };
+          }
           if (b - a + 1 > 200) return json({ jsonrpc: '2.0', id: body.id, error: { message: 'eth_getLogs is limited to a 200 range' } });
           const result = FIXTURE.logs.filter((l) => { const n = parseInt(l.blockNumber, 16); return n >= a && n <= b; });
           return json({ jsonrpc: '2.0', id: body.id, result });
@@ -325,6 +329,30 @@ describe('runProbe (against the recording served by a fake network)', () => {
     const ranges = net.calls.rpc.filter((c) => c.method === 'eth_getLogs').map((c) => parseInt(c.params[0].toBlock, 16) - parseInt(c.params[0].fromBlock, 16) + 1);
     assert.ok(ranges.length >= 19, `expected ≥ 19 chunked requests, got ${ranges.length}`);
     assert.ok(ranges.every((w) => w <= 200));
+  });
+
+  it('adapts the chunk to the limit a provider states in its HTTP 400, then finishes (Alchemy free tier: 10)', async () => {
+    // 2026-11-02 run day: 17 780-block window, Alchemy endpoint, default chunk 200 → every
+    // eth_getLogs refused with HTTP 400 "up to a 10 block range", exit 2, nothing compared.
+    const net = fakeNetwork({ logLimit: 10 });
+    const lines = [];
+    const r = await probe.runProbe(config(), { fetchImpl: net.fetchImpl, log: (s) => lines.push(s), sleep: async () => {} });
+    assert.equal(r.exitCode, 0, lines.join('\n'));
+    assert.equal(r.report.counts.promptSubmitted, 2);
+    const spans = net.calls.rpc.filter((c) => c.method === 'eth_getLogs').map((c) => parseInt(c.params[0].toBlock, 16) - parseInt(c.params[0].fromBlock, 16) + 1);
+    assert.ok(spans.length > 1, 'expected the window to be re-walked in smaller chunks');
+    assert.ok(spans.slice(1).every((n) => n <= 10), `spans after the refusal: ${spans.join(',')}`);
+    assert.ok(lines.some((l) => /chunk 200 → 10/.test(l)), lines.join('\n'));
+  });
+
+  it('still fails on an HTTP 400 that does not state a block-range limit', async () => {
+    const net = fakeNetwork();
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs') return { ok: false, status: 400, json: async () => ({ error: { code: -32600, message: 'bad request' } }) };
+      return net.fetchImpl(url, init);
+    };
+    await assert.rejects(() => probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async () => {} }), /HTTP 400/);
   });
 
   it('exits 1 and names every missing id when the index has gaps', async () => {
