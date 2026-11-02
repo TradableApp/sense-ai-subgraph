@@ -376,7 +376,7 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
       cursor = b + 1;
     } catch (err) {
       const limit = statedLogLimit(err);
-      if (limit === null || limit >= chunk) throw err;
+      if (limit === null || limit < 1 || limit >= chunk) throw err;
       log(`parity: eth_getLogs refused for blocks ${cursor}-${b}; the node allows ${limit} per request — chunk ${chunk} → ${limit}`);
       chunk = limit;
     }
