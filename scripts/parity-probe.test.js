@@ -341,8 +341,26 @@ describe('runProbe (against the recording served by a fake network)', () => {
     assert.equal(r.report.counts.promptSubmitted, 2);
     const spans = net.calls.rpc.filter((c) => c.method === 'eth_getLogs').map((c) => parseInt(c.params[0].toBlock, 16) - parseInt(c.params[0].fromBlock, 16) + 1);
     assert.ok(spans.length > 1, 'expected the window to be re-walked in smaller chunks');
+    assert.ok(spans[0] > 10, `first span should be the refused wide request, got ${spans[0]}`);
     assert.ok(spans.slice(1).every((n) => n <= 10), `spans after the refusal: ${spans.join(',')}`);
     assert.ok(lines.some((l) => /chunk 200 → 10/.test(l)), lines.join('\n'));
+  });
+
+  it('rethrows the original refusal when the stated limit is 0 instead of walking a backward range', async () => {
+    // A cap of 0 would otherwise become chunk 0: the next request is fromBlock > toBlock, the
+    // node answers with an unrelated "invalid range" error and the real cause is hidden.
+    const net = fakeNetwork();
+    const spans = [];
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'eth_getLogs') return net.fetchImpl(url, init);
+      const [{ fromBlock, toBlock }] = body.params;
+      spans.push([parseInt(fromBlock, 16), parseInt(toBlock, 16)]);
+      const message = parseInt(fromBlock, 16) > parseInt(toBlock, 16) ? 'invalid block range params' : 'you can make eth_getLogs requests with up to a 0 block range';
+      return { ok: false, status: 400, json: async () => ({ error: { code: -32600, message } }) };
+    };
+    await assert.rejects(() => probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async () => {} }), /HTTP 400 .* up to a 0 block range/);
+    assert.equal(spans.length, 1, `expected no request after the refusal, got ${JSON.stringify(spans)}`);
   });
 
   it('still fails on an HTTP 400 that does not state a block-range limit', async () => {
