@@ -310,6 +310,12 @@ async function postJson(fetchImpl, url, body, label) {
  * The block-range cap a provider names when refusing an eth_getLogs request, or null. Alchemy's
  * free tier: "you can make eth_getLogs requests with up to a 10 block range"; the public Base
  * Sepolia node: "eth_getLogs is limited to a 200 range".
+ *
+ * Alchemy refuses with HTTP 400, so the text arrives on `err.rpcError` (set by postJson). The
+ * public node answers HTTP 200 with a JSON-RPC error, which rpc() rethrows as
+ * "RPC eth_getLogs: <provider text>" with no rpcError — the `err.message` fallback relies on that
+ * prefix leaving the provider text intact. With PARITY_LOG_CHUNK above 200 the logs loop adapts
+ * downward through this second path too.
  */
 function statedLogLimit(err) {
   const m = /(?:up to a|limited to a) (\d+) (?:block )?range/i.exec(err?.rpcError?.message || err?.message || '');

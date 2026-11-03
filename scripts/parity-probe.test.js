@@ -331,6 +331,17 @@ describe('runProbe (against the recording served by a fake network)', () => {
     assert.ok(ranges.every((w) => w <= 200));
   });
 
+  it('adapts downward from a chunk above 200 when the public node answers HTTP 200 with its range error', async () => {
+    const net = fakeNetwork();
+    const lines = [];
+    const r = await probe.runProbe({ ...config(), chunk: 1000 }, { fetchImpl: net.fetchImpl, log: (s) => lines.push(s), sleep: async () => {} });
+    assert.equal(r.exitCode, 0, lines.join('\n'));
+    const spans = net.calls.rpc.filter((c) => c.method === 'eth_getLogs').map((c) => parseInt(c.params[0].toBlock, 16) - parseInt(c.params[0].fromBlock, 16) + 1);
+    assert.ok(spans[0] > 200, `first span should be the refused wide request, got ${spans[0]}`);
+    assert.ok(spans.slice(1).every((n) => n <= 200), `spans after the refusal: ${spans.join(',')}`);
+    assert.ok(lines.some((l) => /chunk 1000 → 200/.test(l)), lines.join('\n'));
+  });
+
   it('adapts the chunk to the limit a provider states in its HTTP 400, then finishes (Alchemy free tier: 10)', async () => {
     // 2026-11-02 run day: 17 780-block window, Alchemy endpoint, default chunk 200 → every
     // eth_getLogs refused with HTTP 400 "up to a 10 block range", exit 2, nothing compared.
@@ -426,5 +437,22 @@ describe('runProbe (against the recording served by a fake network)', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('statedLogLimit', () => {
+  it('reads the cap from an Alchemy HTTP 400 body', () => {
+    assert.equal(probe.statedLogLimit({ rpcError: { message: 'Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range.' } }), 10);
+  });
+
+  it("reads the cap from the public node's HTTP 200 error through the rpc() message prefix", () => {
+    assert.equal(probe.statedLogLimit({ message: 'RPC eth_getLogs: eth_getLogs is limited to a 200 range' }), 200);
+  });
+
+  it('returns null for an unrecognised message and for no error at all', () => {
+    assert.equal(probe.statedLogLimit({ message: 'bad request' }), null);
+    assert.equal(probe.statedLogLimit({ rpcError: { code: -32600 } }), null);
+    assert.equal(probe.statedLogLimit(null), null);
+    assert.equal(probe.statedLogLimit(undefined), null);
   });
 });
