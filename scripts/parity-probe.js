@@ -19,6 +19,8 @@
  *   NETWORK                                 config/<network>.json for the addresses (default base-testnet)
  *   PARITY_LOG_CHUNK                        eth_getLogs span per request (default 200: the public
  *                                           Base Sepolia RPC refuses anything wider)
+ *                                           If the node refuses a span and states its own cap
+ *                                           (Alchemy free tier: 10), the probe adopts it and carries on.
  *   PARITY_HEAD_WAIT_MS / PARITY_HEAD_POLL_MS  how long to wait for the subgraph head to reach
  *                                           TO_BLOCK before failing (default 180 s / 5 s)
  *   PARITY_REPORT_FILE                      optional JSON report path
@@ -292,8 +294,32 @@ const toHex = (n) => `0x${n.toString(16)}`;
 
 async function postJson(fetchImpl, url, body, label) {
   const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error(`${label}: HTTP ${res.status} from ${redactUrl(url)}`);
+  if (!res.ok) {
+    // Providers put their reason in a JSON-RPC error body even on HTTP 400 (Alchemy: "…up to a
+    // 10 block range…"). Keep it on the error so the logs loop can read a stated limit.
+    let detail = null;
+    try { detail = (await res.json())?.error ?? null; } catch { /* body not JSON */ }
+    const err = new Error(`${label}: HTTP ${res.status} from ${redactUrl(url)}${detail?.message ? ` — ${detail.message}` : ''}`);
+    err.rpcError = detail;
+    throw err;
+  }
   return res.json();
+}
+
+/**
+ * The block-range cap a provider names when refusing an eth_getLogs request, or null. Alchemy's
+ * free tier: "you can make eth_getLogs requests with up to a 10 block range"; the public Base
+ * Sepolia node: "eth_getLogs is limited to a 200 range".
+ *
+ * Alchemy refuses with HTTP 400, so the text arrives on `err.rpcError` (set by postJson). The
+ * public node answers HTTP 200 with a JSON-RPC error, which rpc() rethrows as
+ * "RPC eth_getLogs: <provider text>" with no rpcError — the `err.message` fallback relies on that
+ * prefix leaving the provider text intact. With PARITY_LOG_CHUNK above 200 the logs loop adapts
+ * downward through this second path too.
+ */
+function statedLogLimit(err) {
+  const m = /(?:up to a|limited to a) (\d+) (?:block )?range/i.exec(err?.rpcError?.message || err?.message || '');
+  return m ? Number(m[1]) : null;
 }
 
 async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
@@ -343,9 +369,23 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
   };
   const [fromTs, toTs] = await Promise.all([fromBlock, toBlock].map(blockTimestamp));
 
+  // Walk the window in chunks. When the node refuses a span and states its cap (Alchemy's free
+  // tier caps eth_getLogs at 10 blocks; PARITY_LOG_CHUNK defaults to the public node's 200), adopt
+  // that cap and re-walk from the refused span — nothing before it is re-read, nothing is skipped.
   const logs = [];
-  for (const [a, b] of blockRanges(fromBlock, toBlock, config.chunk)) {
-    logs.push(...(await rpc('eth_getLogs', [{ address: [config.agent, config.escrow], fromBlock: toHex(a), toBlock: toHex(b) }])));
+  let chunk = config.chunk;
+  let cursor = fromBlock;
+  while (cursor <= toBlock) {
+    const b = Math.min(cursor + chunk - 1, toBlock);
+    try {
+      logs.push(...(await rpc('eth_getLogs', [{ address: [config.agent, config.escrow], fromBlock: toHex(cursor), toBlock: toHex(b) }])));
+      cursor = b + 1;
+    } catch (err) {
+      const limit = statedLogLimit(err);
+      if (limit === null || limit < 1 || limit >= chunk) throw err;
+      log(`parity: eth_getLogs refused for blocks ${cursor}-${b}; the node allows ${limit} per request — chunk ${chunk} → ${limit}`);
+      chunk = limit;
+    }
   }
 
   const window = `createdAt_gte: ${fromTs}, createdAt_lte: ${toTs}`;
@@ -396,4 +436,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { EVENTS, decodeLogs, compare, blockRanges, pageAll, resolveConfig, redactUrl, runProbe };
+module.exports = { EVENTS, decodeLogs, compare, blockRanges, pageAll, resolveConfig, redactUrl, runProbe, statedLogLimit };
