@@ -405,6 +405,26 @@ describe('runProbe (against the recording served by a fake network)', () => {
     assert.ok(sleeps.slice(1).every((ms) => ms === 250), `every request after a 429 should be paced by 250 ms, got ${JSON.stringify(sleeps.slice(1, 6))}`);
   });
 
+  it('treats an HTTP 200 JSON-RPC error with code 429 as a throttle too', async () => {
+    // Some providers answer a throttle in-band: HTTP 200 with { error: { code: 429 } }. postJson
+    // returns that body, so rpc() must carry the JSON-RPC error on the thrown Error for isThrottle.
+    const net = fakeNetwork({ logLimit: 10 });
+    let throttled = 0;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs' && throttled < 2) {
+        throttled += 1;
+        return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ jsonrpc: '2.0', id: body.id, error: { code: 429, message: 'exceeded its compute units per second capacity' } }) };
+      }
+      return net.fetchImpl(url, init);
+    };
+    const sleeps = [];
+    const r = await probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0);
+    assert.equal(throttled, 2);
+    assert.deepEqual(sleeps.filter((ms) => ms >= 1000), [1000, 2000]);
+  });
+
   it('gives up on a span that stays throttled and surfaces the 429', async () => {
     const net = fakeNetwork({ logLimit: 10 });
     let attempts = 0;
