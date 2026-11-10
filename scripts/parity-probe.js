@@ -353,7 +353,8 @@ function isThrottle(err) {
   return err?.status === 429 || err?.rpcError?.code === 429;
 }
 
-/** 1 s, 2 s, 4 s, 8 s, 8 s … for retry #1, #2, … — or the provider's retry-after when it states one. */
+/** 1 s, 2 s, 4 s, 8 s, 8 s … for retry #1, #2, … — or the provider's retry-after when it states one
+ *  (a legal `retry-after: 0` yields 0 here; the walk still waits at least one pace period). */
 function throttleDelayMs(err, attempt) {
   if (err?.retryAfterMs !== null && err?.retryAfterMs !== undefined) return err.retryAfterMs;
   return Math.min(LOG_RETRY_BASE_MS * 2 ** (attempt - 1), LOG_RETRY_CAP_MS);
@@ -442,8 +443,8 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
         const delay = throttleDelayMs(err, retries);
         paceMs = Math.max(paceMs, THROTTLED_LOG_PACE_MS);
         log(`parity: eth_getLogs throttled for blocks ${cursor}-${b} (HTTP 429); retry ${retries}/${LOG_RETRY_ATTEMPTS} in ${delay} ms, pacing requests at ${paceMs} ms`);
-        await sleep(delay);
-        requests = 0; // the backoff already covered the pace gap
+        await sleep(Math.max(delay, paceMs)); // honour retry-after, but never less than one pace period
+        requests = 0; // that sleep covered the pace gap
         continue;
       }
       const limit = statedLogLimit(err);
