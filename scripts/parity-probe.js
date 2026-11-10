@@ -347,7 +347,8 @@ function retryAfterMs(res) {
   return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
 }
 
-/** True for a provider throttle: HTTP 429, or the JSON-RPC 429 code some providers use on HTTP 200. */
+/** True for a provider throttle: HTTP 429, or a JSON-RPC error body with code 429 (in-band on HTTP 200, or
+ *  inside a 4xx/5xx body — both reach here as err.rpcError). */
 function isThrottle(err) {
   return err?.status === 429 || err?.rpcError?.code === 429;
 }
@@ -362,7 +363,13 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
   let rpcId = 0;
   const rpc = async (method, params = []) => {
     const json = await postJson(fetchImpl, config.rpcUrl, { jsonrpc: '2.0', id: (rpcId += 1), method, params }, `RPC ${method}`);
-    if (json.error) throw new Error(`RPC ${method}: ${json.error.message || 'unknown error'}`);
+    if (json.error) {
+      // An in-band error (HTTP 200 with { error }) keeps its JSON-RPC body on the Error, the same
+      // way postJson does for HTTP 4xx/5xx, so isThrottle / statedLogLimit read one shape.
+      const err = new Error(`RPC ${method}: ${json.error.message || 'unknown error'}`);
+      err.rpcError = json.error;
+      throw err;
+    }
     return json.result;
   };
   const graph = async (query) => {
