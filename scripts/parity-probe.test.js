@@ -223,6 +223,9 @@ describe('resolveConfig', () => {
     assert.throws(() => probe.resolveConfig({ ...base, PARITY_HEAD_WAIT_MS: 'abc' }, { readConfig }), /PARITY_HEAD_WAIT_MS/);
     assert.throws(() => probe.resolveConfig({ ...base, PARITY_HEAD_POLL_MS: '0' }, { readConfig }), /PARITY_HEAD_POLL_MS/);
     assert.equal(probe.resolveConfig({ ...base, PARITY_HEAD_POLL_MS: '250' }, { readConfig }).headPollMs, 250);
+    assert.equal(probe.resolveConfig({ ...base }, { readConfig }).logPaceMs, 0);
+    assert.equal(probe.resolveConfig({ ...base, PARITY_LOG_PACE_MS: '250' }, { readConfig }).logPaceMs, 250);
+    assert.throws(() => probe.resolveConfig({ ...base, PARITY_LOG_PACE_MS: '-1' }, { readConfig }), /PARITY_LOG_PACE_MS/);
   });
 });
 
@@ -275,7 +278,7 @@ describe('runProbe (against the recording served by a fake network)', () => {
   const config = () => ({
     rpcUrl: 'https://rpc.example/v2/secretkey', graphUrl: 'https://graph.example/q',
     fromBlock: FIXTURE.fromBlock, toBlock: FIXTURE.toBlock, agent: FIXTURE.agent, escrow: FIXTURE.escrow,
-    chunk: 200, headWaitMs: 0, headPollMs: 0, reportFile: null,
+    chunk: 200, headWaitMs: 0, headPollMs: 0, logPaceMs: 0, reportFile: null,
   });
 
   /** Fake fetch: a JSON-RPC node serving the recording and a Graph endpoint serving `entities`. */
@@ -355,6 +358,113 @@ describe('runProbe (against the recording served by a fake network)', () => {
     assert.ok(spans[0] > 10, `first span should be the refused wide request, got ${spans[0]}`);
     assert.ok(spans.slice(1).every((n) => n <= 10), `spans after the refusal: ${spans.join(',')}`);
     assert.ok(lines.some((l) => /chunk 200 → 10/.test(l)), lines.join('\n'));
+  });
+
+  it('retries an eth_getLogs span the provider throttles with HTTP 429, backing off, then finishes (Alchemy CU/s cap)', async () => {
+    // 2026-11-10 run day: 33 471-block window at the stated 10-block cap → ~3 350 back-to-back
+    // requests; Alchemy answered the first batch with HTTP 429 "exceeded its compute units per
+    // second capacity" and the stage died in 10 s with an empty report.
+    const net = fakeNetwork({ logLimit: 10 });
+    let throttled = 0;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs' && throttled < 3) {
+        throttled += 1;
+        return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({ jsonrpc: '2.0', id: body.id, error: { code: 429, message: 'Your app has exceeded its compute units per second capacity. If you have retries enabled, you can safely ignore this message.' } }) };
+      }
+      return net.fetchImpl(url, init);
+    };
+    const lines = [];
+    const sleeps = [];
+    const r = await probe.runProbe(config(), { fetchImpl, log: (s) => lines.push(s), sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0, lines.join('\n'));
+    assert.equal(r.report.counts.promptSubmitted, 2);
+    assert.equal(throttled, 3, 'the fake should have throttled three attempts');
+    const backoffs = sleeps.filter((ms) => ms >= 1000);
+    assert.deepEqual(backoffs, [1000, 2000, 4000], `expected exponential backoff after each 429, got ${JSON.stringify(sleeps)}`);
+    assert.ok(lines.some((l) => /HTTP 429/.test(l) && /retry/i.test(l)), lines.join('\n'));
+  });
+
+  it('honours retry-after on a 429 and paces the remaining requests once throttled', async () => {
+    const net = fakeNetwork({ logLimit: 10 });
+    let throttled = false;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs' && !throttled) {
+        throttled = true;
+        return { ok: false, status: 429, headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? '3' : null) }, json: async () => ({ error: { code: 429, message: 'exceeded its compute units per second capacity' } }) };
+      }
+      return net.fetchImpl(url, init);
+    };
+    const sleeps = [];
+    const r = await probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0);
+    assert.equal(sleeps[0], 3000, `first wait should follow retry-after, got ${JSON.stringify(sleeps)}`);
+    const logRequests = sleeps.length - 1;
+    assert.ok(logRequests > 5, 'expected paced requests after the throttle');
+    assert.ok(sleeps.slice(1).every((ms) => ms === 250), `every request after a 429 should be paced by 250 ms, got ${JSON.stringify(sleeps.slice(1, 6))}`);
+  });
+
+  it('treats an HTTP 200 JSON-RPC error with code 429 as a throttle too', async () => {
+    // Some providers answer a throttle in-band: HTTP 200 with { error: { code: 429 } }. postJson
+    // returns that body, so rpc() must carry the JSON-RPC error on the thrown Error for isThrottle.
+    const net = fakeNetwork({ logLimit: 10 });
+    let throttled = 0;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs' && throttled < 2) {
+        throttled += 1;
+        return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ jsonrpc: '2.0', id: body.id, error: { code: 429, message: 'exceeded its compute units per second capacity' } }) };
+      }
+      return net.fetchImpl(url, init);
+    };
+    const sleeps = [];
+    const r = await probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0);
+    assert.equal(throttled, 2);
+    assert.deepEqual(sleeps.filter((ms) => ms >= 1000), [1000, 2000]);
+  });
+
+  it('waits at least one pace period on a retry-after of 0, so the throttled invariant holds', async () => {
+    // Retry-After: 0 is legal; honouring it literally would fire the retry with no gap even though
+    // pacing was just raised to 250 ms.
+    const net = fakeNetwork({ logLimit: 10 });
+    let throttled = false;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method === 'eth_getLogs' && !throttled) {
+        throttled = true;
+        return { ok: false, status: 429, headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? '0' : null) }, json: async () => ({ error: { code: 429, message: 'exceeded its compute units per second capacity' } }) };
+      }
+      return net.fetchImpl(url, init);
+    };
+    const sleeps = [];
+    const r = await probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0);
+    assert.equal(sleeps[0], 250, `the retry after a 0 s retry-after should still wait one pace period, got ${JSON.stringify(sleeps.slice(0, 3))}`);
+    assert.ok(sleeps.every((ms) => ms >= 250), 'every gap after the throttle is at least the pace');
+  });
+
+  it('gives up on a span that stays throttled and surfaces the 429', async () => {
+    const net = fakeNetwork({ logLimit: 10 });
+    let attempts = 0;
+    const fetchImpl = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.method !== 'eth_getLogs') return net.fetchImpl(url, init);
+      attempts += 1;
+      return { ok: false, status: 429, headers: { get: () => null }, json: async () => ({ error: { code: 429, message: 'exceeded its compute units per second capacity' } }) };
+    };
+    await assert.rejects(() => probe.runProbe(config(), { fetchImpl, log: () => {}, sleep: async () => {} }), /HTTP 429 .*compute units/);
+    assert.equal(attempts, 1 + 6, `expected the first attempt plus 6 retries, got ${attempts}`);
+  });
+
+  it('paces every eth_getLogs request by PARITY_LOG_PACE_MS when set, before any throttle', async () => {
+    const net = fakeNetwork({ logLimit: 10 });
+    const sleeps = [];
+    const r = await probe.runProbe({ ...config(), logPaceMs: 100 }, { fetchImpl: net.fetchImpl, log: () => {}, sleep: async (ms) => { sleeps.push(ms); } });
+    assert.equal(r.exitCode, 0);
+    const logRequests = net.calls.rpc.filter((c) => c.method === 'eth_getLogs').length;
+    assert.equal(sleeps.filter((ms) => ms === 100).length, logRequests - 1, 'one pace between each pair of log requests');
   });
 
   it('rethrows the original refusal when the stated limit is 0 instead of walking a backward range', async () => {

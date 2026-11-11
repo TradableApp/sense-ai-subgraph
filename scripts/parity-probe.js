@@ -23,6 +23,11 @@
  *                                           (Alchemy free tier: 10), the probe adopts it and carries on.
  *   PARITY_HEAD_WAIT_MS / PARITY_HEAD_POLL_MS  how long to wait for the subgraph head to reach
  *                                           TO_BLOCK before failing (default 180 s / 5 s)
+ *   PARITY_LOG_PACE_MS                      minimum gap between eth_getLogs requests (default 0).
+ *                                           A provider's HTTP 429 (Alchemy: "compute units per
+ *                                           second") is retried with 1→2→4→8 s backoff (or its
+ *                                           retry-after) up to 6 times, and from the first 429 on
+ *                                           the walk is paced at ≥ 250 ms per request.
  *   PARITY_REPORT_FILE                      optional JSON report path
  *
  * Exit codes: 0 parity · 1 gaps (every missing/extra id named) or the head never caught up ·
@@ -42,6 +47,13 @@ const DEFAULT_NETWORK = 'base-testnet';
 const DEFAULT_LOG_CHUNK = 200;
 const DEFAULT_HEAD_WAIT_MS = 180_000;
 const DEFAULT_HEAD_POLL_MS = 5_000;
+const DEFAULT_LOG_PACE_MS = 0;
+/** Once a provider throttles, never send eth_getLogs faster than this (≈ 4 req/s: Alchemy's free
+ *  tier allows 330 CU/s and prices eth_getLogs at 75 CU). */
+const THROTTLED_LOG_PACE_MS = 250;
+const LOG_RETRY_ATTEMPTS = 6;
+const LOG_RETRY_BASE_MS = 1_000;
+const LOG_RETRY_CAP_MS = 8_000;
 const GRAPH_PAGE = 1000;
 /** graph-node refuses `skip` above this; past it the window has to be narrowed, not paged. */
 const GRAPH_SKIP_LIMIT = 5000;
@@ -258,6 +270,8 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
   if (Number.isNaN(headWaitMs)) problems.push('PARITY_HEAD_WAIT_MS must be a non-negative integer (milliseconds)');
   const headPollMs = given('PARITY_HEAD_POLL_MS') ? parseBlock(env.PARITY_HEAD_POLL_MS) : DEFAULT_HEAD_POLL_MS;
   if (Number.isNaN(headPollMs) || headPollMs < 1) problems.push('PARITY_HEAD_POLL_MS must be a positive integer (milliseconds)');
+  const logPaceMs = given('PARITY_LOG_PACE_MS') ? parseBlock(env.PARITY_LOG_PACE_MS) : DEFAULT_LOG_PACE_MS;
+  if (Number.isNaN(logPaceMs)) problems.push('PARITY_LOG_PACE_MS must be a non-negative integer (milliseconds)');
   // The network config is a file, not an env var, but a missing key fails the same way: by name,
   // in the same throw, instead of a TypeError after the env checks passed.
   const agent = cfg?.EVMAIAgent?.address;
@@ -276,6 +290,7 @@ function resolveConfig(env, { readConfig = defaultReadConfig } = {}) {
     chunk,
     headWaitMs,
     headPollMs,
+    logPaceMs,
     reportFile: env.PARITY_REPORT_FILE || null,
   };
 }
@@ -301,6 +316,8 @@ async function postJson(fetchImpl, url, body, label) {
     try { detail = (await res.json())?.error ?? null; } catch { /* body not JSON */ }
     const err = new Error(`${label}: HTTP ${res.status} from ${redactUrl(url)}${detail?.message ? ` — ${detail.message}` : ''}`);
     err.rpcError = detail;
+    err.status = res.status;
+    err.retryAfterMs = retryAfterMs(res);
     throw err;
   }
   return res.json();
@@ -322,11 +339,38 @@ function statedLogLimit(err) {
   return m ? Number(m[1]) : null;
 }
 
+/** The `retry-after` header in milliseconds when a provider sends one (delay-seconds form), else null. */
+function retryAfterMs(res) {
+  const raw = typeof res?.headers?.get === 'function' ? res.headers.get('retry-after') : null;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+}
+
+/** True for a provider throttle: HTTP 429, or a JSON-RPC error body with code 429 (in-band on HTTP 200, or
+ *  inside a 4xx/5xx body — both reach here as err.rpcError). */
+function isThrottle(err) {
+  return err?.status === 429 || err?.rpcError?.code === 429;
+}
+
+/** 1 s, 2 s, 4 s, 8 s, 8 s … for retry #1, #2, … — or the provider's retry-after when it states one
+ *  (a legal `retry-after: 0` yields 0 here; the walk still waits at least one pace period). */
+function throttleDelayMs(err, attempt) {
+  if (err?.retryAfterMs !== null && err?.retryAfterMs !== undefined) return err.retryAfterMs;
+  return Math.min(LOG_RETRY_BASE_MS * 2 ** (attempt - 1), LOG_RETRY_CAP_MS);
+}
+
 async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.log, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), now = Date.now } = {}) {
   let rpcId = 0;
   const rpc = async (method, params = []) => {
     const json = await postJson(fetchImpl, config.rpcUrl, { jsonrpc: '2.0', id: (rpcId += 1), method, params }, `RPC ${method}`);
-    if (json.error) throw new Error(`RPC ${method}: ${json.error.message || 'unknown error'}`);
+    if (json.error) {
+      // An in-band error (HTTP 200 with { error }) keeps its JSON-RPC body on the Error, the same
+      // way postJson does for HTTP 4xx/5xx, so isThrottle / statedLogLimit read one shape.
+      const err = new Error(`RPC ${method}: ${json.error.message || 'unknown error'}`);
+      err.rpcError = json.error;
+      throw err;
+    }
     return json.result;
   };
   const graph = async (query) => {
@@ -372,15 +416,37 @@ async function runProbe(config, { fetchImpl = globalThis.fetch, log = console.lo
   // Walk the window in chunks. When the node refuses a span and states its cap (Alchemy's free
   // tier caps eth_getLogs at 10 blocks; PARITY_LOG_CHUNK defaults to the public node's 200), adopt
   // that cap and re-walk from the refused span — nothing before it is re-read, nothing is skipped.
+  //
+  // A throttle (HTTP 429 — Alchemy's compute-units-per-second cap, hit on 2026-11-10 when a
+  // 33 471-block window at the 10-block cap meant ~3 350 back-to-back requests) is not a refusal
+  // of the span: the same span is retried after a backoff (the provider's retry-after when it
+  // states one, else 1→2→4→8 s), up to LOG_RETRY_ATTEMPTS times, and from the first throttle on
+  // every request is paced so the walk stays under the cap instead of bouncing off it.
   const logs = [];
   let chunk = config.chunk;
   let cursor = fromBlock;
+  let paceMs = config.logPaceMs ?? DEFAULT_LOG_PACE_MS;
+  let retries = 0;
+  let requests = 0;
   while (cursor <= toBlock) {
     const b = Math.min(cursor + chunk - 1, toBlock);
+    if (paceMs > 0 && requests > 0) await sleep(paceMs);
+    requests += 1;
     try {
       logs.push(...(await rpc('eth_getLogs', [{ address: [config.agent, config.escrow], fromBlock: toHex(cursor), toBlock: toHex(b) }])));
       cursor = b + 1;
+      retries = 0;
     } catch (err) {
+      if (isThrottle(err)) {
+        if (retries >= LOG_RETRY_ATTEMPTS) throw err;
+        retries += 1;
+        const delay = throttleDelayMs(err, retries);
+        paceMs = Math.max(paceMs, THROTTLED_LOG_PACE_MS);
+        log(`parity: eth_getLogs throttled for blocks ${cursor}-${b} (HTTP 429); retry ${retries}/${LOG_RETRY_ATTEMPTS} in ${delay} ms, pacing requests at ${paceMs} ms`);
+        await sleep(Math.max(delay, paceMs)); // honour retry-after, but never less than one pace period
+        requests = 0; // that sleep covered the pace gap
+        continue;
+      }
       const limit = statedLogLimit(err);
       if (limit === null || limit < 1 || limit >= chunk) throw err;
       log(`parity: eth_getLogs refused for blocks ${cursor}-${b}; the node allows ${limit} per request — chunk ${chunk} → ${limit}`);
@@ -436,4 +502,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { EVENTS, decodeLogs, compare, blockRanges, pageAll, resolveConfig, redactUrl, runProbe, statedLogLimit };
+module.exports = { EVENTS, decodeLogs, compare, blockRanges, pageAll, resolveConfig, redactUrl, runProbe, statedLogLimit, retryAfterMs, isThrottle, throttleDelayMs };
