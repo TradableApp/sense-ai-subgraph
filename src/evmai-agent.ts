@@ -1,4 +1,11 @@
-import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
+import {
+  BigInt,
+  ByteArray,
+  Bytes,
+  crypto,
+  ethereum,
+  log,
+} from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -11,7 +18,9 @@ import {
   BranchRequested,
   MetadataUpdateRequested,
   AgentEscrowUpdated,
-  OracleUpdated,
+  RoleGranted,
+  RoleRevoked,
+  OracleEncryptionKeyUpdated,
   AgentJobSubmitted,
   RegenerationRequested,
 } from "../generated/EVMAIAgent/EVMAIAgent";
@@ -25,6 +34,8 @@ import {
   AgentJob,
   RegenerationRequest,
   FeeConfig,
+  Oracle,
+  OracleChange,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -254,12 +265,85 @@ export function handleAgentEscrowUpdated(event: AgentEscrowUpdated): void {
   config.save();
 }
 
-export function handleOracleUpdated(event: OracleUpdated): void {
+// --- Oracle Set ---
+
+// The agent gates its oracle-only functions on this role. Other roles are not ours to index.
+function isOracleRole(role: Bytes): boolean {
+  let oracleRole = crypto.keccak256(ByteArray.fromUTF8("ORACLE_ROLE"));
+  return role.toHexString() == oracleRole.toHexString();
+}
+
+function newOracleChange(event: ethereum.Event, kind: string): OracleChange {
+  let id =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let change = new OracleChange(id);
+  change.kind = kind;
+  change.sender = event.transaction.from;
+  change.blockNumber = event.block.number;
+  change.timestamp = event.block.timestamp;
+  change.txHash = event.transaction.hash;
+  return change;
+}
+
+export function handleRoleGranted(event: RoleGranted): void {
+  if (!isOracleRole(event.params.role)) {
+    return;
+  }
+  let id = event.params.account.toHexString();
+  let oracle = Oracle.load(id);
+  if (!oracle) {
+    oracle = new Oracle(id);
+    oracle.address = event.params.account;
+  }
+  oracle.active = true;
+  oracle.addedAt = event.block.timestamp;
+  oracle.removedAt = null;
+  oracle.updatedAt = event.block.timestamp;
+  oracle.save();
+
+  let change = newOracleChange(event, "ADDED");
+  change.oracle = event.params.account;
+  change.sender = event.params.sender;
+  change.save();
+}
+
+export function handleRoleRevoked(event: RoleRevoked): void {
+  if (!isOracleRole(event.params.role)) {
+    return;
+  }
+  // The contract only emits this for an address that held the role, so a missing record means
+  // the grant was before this subgraph's start block. The history still keeps the removal.
+  let oracle = Oracle.load(event.params.account.toHexString());
+  if (oracle) {
+    oracle.active = false;
+    oracle.removedAt = event.block.timestamp;
+    oracle.updatedAt = event.block.timestamp;
+    oracle.save();
+  } else {
+    log.warning("RoleRevoked for an oracle with no record: {}", [
+      event.params.account.toHexString(),
+    ]);
+  }
+
+  let change = newOracleChange(event, "REMOVED");
+  change.oracle = event.params.account;
+  change.sender = event.params.sender;
+  change.save();
+}
+
+export function handleOracleEncryptionKeyUpdated(
+  event: OracleEncryptionKeyUpdated
+): void {
   let config = ProtocolConfig.load("singleton");
   if (!config) {
     config = new ProtocolConfig("singleton");
   }
-  config.oracleAddress = event.params.newOracle;
+  let change = newOracleChange(event, "ENCRYPTION_KEY");
+  change.previousKey = config.oracleEncryptionKey;
+  change.newKey = event.params.newKey;
+  change.save();
+
+  config.oracleEncryptionKey = event.params.newKey;
   config.updatedAt = event.block.timestamp;
   config.save();
 }
