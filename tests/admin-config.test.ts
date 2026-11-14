@@ -36,6 +36,7 @@ const ESCROW_ADDRESS = "0x0000000000000000000000000000000000000002";
 const ORACLE_KEY =
   "0x02" + "11".repeat(32);
 const TREASURY_ADDRESS = "0x0000000000000000000000000000000000000004";
+const ORACLE_ADDRESS = "0x0000000000000000000000000000000000000005";
 const USER_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SINGLETON_ID = "singleton";
 
@@ -104,7 +105,10 @@ describe("ProtocolConfig — TreasuryUpdated", () => {
       createAgentEscrowUpdatedEvent(Address.fromString(ESCROW_ADDRESS))
     );
     handleOracleEncryptionKeyUpdated(
-      createOracleEncryptionKeyUpdatedEvent(Bytes.fromHexString(ORACLE_KEY))
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ORACLE_ADDRESS),
+        Bytes.fromHexString(ORACLE_KEY)
+      )
     );
     handleTreasuryUpdated(
       createTreasuryUpdatedEvent(Address.fromString(TREASURY_ADDRESS))
