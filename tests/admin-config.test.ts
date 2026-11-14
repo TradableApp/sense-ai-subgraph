@@ -8,7 +8,7 @@ import {
 import { Address, BigInt, Bytes } from "@graphprotocol/graph-ts";
 import {
   handleAgentEscrowUpdated,
-  handleOracleUpdated,
+  handleOracleEncryptionKeyUpdated,
   handleAgentJobSubmitted,
   handleRegenerationRequested,
 } from "../src/evmai-agent";
@@ -21,7 +21,7 @@ import {
 } from "../src/evmai-agent-escrow";
 import {
   createAgentEscrowUpdatedEvent,
-  createOracleUpdatedEvent,
+  createOracleEncryptionKeyUpdatedEvent,
   createAgentJobSubmittedEvent,
   createRegenerationRequestedEvent,
   createPromptFeeUpdatedEvent,
@@ -32,7 +32,9 @@ import {
 } from "./admin-config-utils";
 
 const ESCROW_ADDRESS = "0x0000000000000000000000000000000000000002";
-const ORACLE_ADDRESS = "0x0000000000000000000000000000000000000003";
+// A compressed secp256k1 public key is 33 bytes: 0x02 or 0x03, then the x coordinate.
+const ORACLE_KEY =
+  "0x02" + "11".repeat(32);
 const TREASURY_ADDRESS = "0x0000000000000000000000000000000000000004";
 const USER_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SINGLETON_ID = "singleton";
@@ -77,25 +79,6 @@ describe("ProtocolConfig — AgentEscrowUpdated", () => {
   });
 });
 
-describe("ProtocolConfig — OracleUpdated", () => {
-  afterEach(() => {
-    clearStore();
-  });
-
-  test("sets oracleAddress on ProtocolConfig singleton", () => {
-    let event = createOracleUpdatedEvent(Address.fromString(ORACLE_ADDRESS));
-    handleOracleUpdated(event);
-
-    assert.entityCount("ProtocolConfig", 1);
-    assert.fieldEquals(
-      "ProtocolConfig",
-      SINGLETON_ID,
-      "oracleAddress",
-      ORACLE_ADDRESS
-    );
-  });
-});
-
 describe("ProtocolConfig — TreasuryUpdated", () => {
   afterEach(() => {
     clearStore();
@@ -116,12 +99,12 @@ describe("ProtocolConfig — TreasuryUpdated", () => {
     );
   });
 
-  test("preserves existing escrow and oracle when treasury is set", () => {
+  test("preserves the escrow address and the oracle key when treasury is set", () => {
     handleAgentEscrowUpdated(
       createAgentEscrowUpdatedEvent(Address.fromString(ESCROW_ADDRESS))
     );
-    handleOracleUpdated(
-      createOracleUpdatedEvent(Address.fromString(ORACLE_ADDRESS))
+    handleOracleEncryptionKeyUpdated(
+      createOracleEncryptionKeyUpdatedEvent(Bytes.fromHexString(ORACLE_KEY))
     );
     handleTreasuryUpdated(
       createTreasuryUpdatedEvent(Address.fromString(TREASURY_ADDRESS))
@@ -137,8 +120,8 @@ describe("ProtocolConfig — TreasuryUpdated", () => {
     assert.fieldEquals(
       "ProtocolConfig",
       SINGLETON_ID,
-      "oracleAddress",
-      ORACLE_ADDRESS
+      "oracleEncryptionKey",
+      ORACLE_KEY
     );
     assert.fieldEquals(
       "ProtocolConfig",

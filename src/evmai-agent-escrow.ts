@@ -20,6 +20,8 @@ import {
   Activity,
   FeeConfig,
   ProtocolConfig,
+  TreasuryChange,
+  FeeChange,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -153,18 +155,38 @@ export function handleSpendingLimitCancelled(
 function loadOrCreateFeeConfig(timestamp: BigInt): FeeConfig {
   let fees = FeeConfig.load("singleton");
   if (!fees) {
+    // Each fee stays unset until its own event is seen: the change history must not claim a fee
+    // was 0 before its first event. So a reader must check a fee for null before using it, as
+    // the existing ones do; FeeConfig existing does not mean every fee is known.
     fees = new FeeConfig("singleton");
-    fees.promptFee = BigInt.fromI32(0);
-    fees.branchFee = BigInt.fromI32(0);
-    fees.cancellationFee = BigInt.fromI32(0);
-    fees.metadataUpdateFee = BigInt.fromI32(0);
     fees.updatedAt = timestamp;
   }
   return fees;
 }
 
+// One immutable record per fee change, beside the current value on FeeConfig.
+function recordFeeChange(
+  event: ethereum.Event,
+  fee: string,
+  previousFee: BigInt | null,
+  newFee: BigInt
+): void {
+  let id =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let change = new FeeChange(id);
+  change.fee = fee;
+  change.previousFee = previousFee;
+  change.newFee = newFee;
+  change.txFrom = event.transaction.from;
+  change.blockNumber = event.block.number;
+  change.timestamp = event.block.timestamp;
+  change.txHash = event.transaction.hash;
+  change.save();
+}
+
 export function handlePromptFeeUpdated(event: PromptFeeUpdated): void {
   let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  recordFeeChange(event, "PROMPT", fees.promptFee, event.params.newFee);
   fees.promptFee = event.params.newFee;
   fees.updatedAt = event.block.timestamp;
   fees.save();
@@ -172,6 +194,7 @@ export function handlePromptFeeUpdated(event: PromptFeeUpdated): void {
 
 export function handleBranchFeeUpdated(event: BranchFeeUpdated): void {
   let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  recordFeeChange(event, "BRANCH", fees.branchFee, event.params.newFee);
   fees.branchFee = event.params.newFee;
   fees.updatedAt = event.block.timestamp;
   fees.save();
@@ -181,6 +204,12 @@ export function handleCancellationFeeUpdated(
   event: CancellationFeeUpdated
 ): void {
   let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  recordFeeChange(
+    event,
+    "CANCELLATION",
+    fees.cancellationFee,
+    event.params.newFee
+  );
   fees.cancellationFee = event.params.newFee;
   fees.updatedAt = event.block.timestamp;
   fees.save();
@@ -190,6 +219,12 @@ export function handleMetadataUpdateFeeUpdated(
   event: MetadataUpdateFeeUpdated
 ): void {
   let fees = loadOrCreateFeeConfig(event.block.timestamp);
+  recordFeeChange(
+    event,
+    "METADATA_UPDATE",
+    fees.metadataUpdateFee,
+    event.params.newFee
+  );
   fees.metadataUpdateFee = event.params.newFee;
   fees.updatedAt = event.block.timestamp;
   fees.save();
@@ -200,6 +235,17 @@ export function handleTreasuryUpdated(event: TreasuryUpdated): void {
   if (!config) {
     config = new ProtocolConfig("singleton");
   }
+  let id =
+    event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
+  let change = new TreasuryChange(id);
+  change.previousTreasury = config.treasuryAddress;
+  change.newTreasury = event.params.newTreasury;
+  change.txFrom = event.transaction.from;
+  change.blockNumber = event.block.number;
+  change.timestamp = event.block.timestamp;
+  change.txHash = event.transaction.hash;
+  change.save();
+
   config.treasuryAddress = event.params.newTreasury;
   config.updatedAt = event.block.timestamp;
   config.save();

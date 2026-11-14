@@ -63,8 +63,8 @@ The generator (`scripts/gen-localnet-config.js`) validates address format and bl
 
 `subgraph.template.yaml` defines two Ethereum data sources that feed into a single GraphQL schema:
 
-- **EVMAIAgent** (`src/evmai-agent.ts`) — chat and conversation logic: conversations, messages, search deltas, prompt requests, branching, metadata updates
-- **EVMAIAgentEscrow** (`src/evmai-agent-escrow.ts`) — financial logic: payments (escrow lifecycle), spending limits (per-user plans), prompt cancellations
+- **EVMAIAgent** (`src/evmai-agent.ts`) — chat and conversation logic: conversations, messages, search deltas, prompt requests, branching, metadata updates; and the oracle set and the oracle encryption key
+- **EVMAIAgentEscrow** (`src/evmai-agent-escrow.ts`) — financial logic: payments (escrow lifecycle), spending limits (per-user plans), prompt cancellations; and the fees and the treasury
 
 Both handlers write to the shared `Activity` entity to produce a unified audit log.
 
@@ -92,14 +92,22 @@ Conversation (mutable)
 Payment (mutable) — keyed by escrowId
 SpendingLimit (mutable) — keyed by user address (one per user)
 Activity (immutable) — keyed by txHash-logIndex
+
+ProtocolConfig (mutable singleton) — escrow address, treasury address, oracle encryption key
+FeeConfig (mutable singleton) — the four fees
+Oracle (mutable) — keyed by address; one per address that has ever held the oracle role
+OracleChange / TreasuryChange / FeeChange (immutable) — keyed by txHash-logIndex
 ```
 
 ### Key design invariants
 
 - **`PromptRequest.id` = `answerMessageId`** — this is the only ID available at cancellation time, so it's used as the primary key instead of `promptMessageId`. The escrowId also maps to `answerMessageId`, enabling cross-referencing between the two contracts.
+- **Oracles are a set, not one address.** The agent authorizes oracles through a role (`ORACLE_ROLE`, OpenZeppelin `RoleGranted` / `RoleRevoked`), and a rotation is meant to add the new oracle before removing the old one; the set can also be empty. `Oracle.active` is the current answer (`oracles(where: { active: true })`); there is no single `oracleAddress`. The handlers ignore every role except `ORACLE_ROLE`.
+- **Current value plus change history.** `ProtocolConfig` and `FeeConfig` hold the current value only. Every oracle, key, treasury and fee change is also written as its own immutable record (`OracleChange`, `TreasuryChange`, `FeeChange`) with the value before (null for the first one seen), the value after, the block, the time and the transaction. `txFrom` on every record is the account that sent the transaction, which under a multisig is the account that executed it, not the multisig. `OracleChange.caller` (role records only) is the account that called the contract: the owner, or an oracle giving up its own role.
 - **`Conversation.lastMessageCreatedAt` is bumped on any state change** (new message, cancellation, refund, metadata update) so the sync service always picks up the change.
 - **`Activity` is the unified audit trail** — every billable user action creates one. `amount` is negative for costs and positive for refunds (in wei). Types: `CONVERSATION`, `BRANCH`, `CANCEL`, `REFUND`, `PLAN_UPDATE`, `PLAN_REVOKE`, `METADATA_UPDATE`.
 - **`createActivity()` is duplicated** in both mapping files — this is intentional due to AssemblyScript's lack of cross-file shared helpers in The Graph's module system.
+- **A fee on `FeeConfig` is null until its own `*FeeUpdated` event is indexed.** Every reader must check for null before using one; the entity existing does not mean all four fees are known.
 - **Fees are read from the indexed `FeeConfig` entity** (populated by the `*FeeUpdated` events, including on `initialize`) when recording `Activity.amount` — **not** via `eth_calls`. This follows [The Graph's "avoid eth_calls" best practice](https://thegraph.com/docs/en/subgraphs/best-practices/avoid-eth-calls/) and avoids a graph-node↔Hardhat localnet incompatibility (graph-node sends both `input` and `data` in `eth_call`; Hardhat 2.22+ rejects the duplicate, stalling indexing). If `FeeConfig` is unset (no fee event seen yet) the amount falls back to 0.
 
 ### Testing
@@ -168,9 +176,10 @@ cp artifacts/contracts/EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json ../sense-ai-su
 bun run prepare:testnet && bun run codegen && bun run build
 ```
 
-**ABI Status (as of 29 May 2026):**
-- `abis/EVMAIAgent.json`: In sync with `tokenized-ai-agent` (event list verified)
-- `abis/EVMAIAgentEscrow.json`: In sync with `tokenized-ai-agent` (event list verified)
+**ABI Status (as of 2026-11-14 UTC):**
+- `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `922eec0`.
+- Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `DirectPaymentProcessed`, `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
+- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the handlers already indexed has the same signature in both, so the subgraph keeps indexing the deployed contracts; the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after the owner publishes it with `setOracleEncryptionKey`. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
 
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.
 

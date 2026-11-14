@@ -74,13 +74,66 @@ type SpendingLimit @entity(immutable: false) {
 
 # --- Protocol Configuration (Singletons) ---
 
-# Mutable: Updated whenever admin changes escrow, oracle, or treasury addresses
+# Mutable: Updated whenever the owner changes the escrow address, the treasury address or the
+# key clients encrypt to. The oracles themselves are a set: see Oracle.
 type ProtocolConfig @entity(immutable: false) {
   id: ID! # always "singleton"
   escrowAddress: Bytes
-  oracleAddress: Bytes
   treasuryAddress: Bytes
+  oracleEncryptionKey: Bytes # secp256k1 public key, compressed or uncompressed; null until published
   updatedAt: BigInt!
+}
+
+# Mutable: One record per address that has ever held the oracle role. Several can be active at
+# once (a rotation is meant to add the new oracle before removing the old one), and the set can
+# be empty. Current set: oracles(where: { active: true }).
+type Oracle @entity(immutable: false) {
+  id: ID! # the oracle's address
+  address: Bytes!
+  active: Boolean!
+  addedAt: BigInt! # block timestamp of the latest grant
+  removedAt: BigInt # block timestamp of the latest removal; null while active
+  updatedAt: BigInt!
+}
+
+# --- Change History (who changed what, and when) ---
+# The singletons above hold the current value only. Each change is also kept as its own record.
+
+# Immutable: One record per oracle added, oracle removed, or encryption key published
+type OracleChange @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  kind: String! # "ADDED", "REMOVED", "ENCRYPTION_KEY"
+  oracle: Bytes # the oracle added or removed; null for "ENCRYPTION_KEY"
+  previousKey: Bytes # "ENCRYPTION_KEY" only; null for the first publication
+  newKey: Bytes # "ENCRYPTION_KEY" only
+  caller: Bytes # "ADDED" / "REMOVED" only: the account that called the contract (the owner, or the oracle giving up its own role)
+  txFrom: Bytes! # the account that sent the transaction; under a multisig or a relayer this is not the caller
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+# Immutable: One record per TreasuryUpdated event
+type TreasuryChange @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  previousTreasury: Bytes # null for the first one seen
+  newTreasury: Bytes!
+  txFrom: Bytes! # the account that sent the transaction (for a multisig, the account that executed it)
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+# Immutable: One record per fee update event
+type FeeChange @entity(immutable: true) {
+  id: ID! # txHash-logIndex
+  fee: String! # "PROMPT", "BRANCH", "CANCELLATION", "METADATA_UPDATE"
+  previousFee: BigInt # null for the first event seen for this fee
+  newFee: BigInt!
+  txFrom: Bytes! # the account that sent the transaction (for a multisig, the account that executed it)
+  blockNumber: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
 }
 
 # Mutable: Updated whenever admin changes any fee value

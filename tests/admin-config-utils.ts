@@ -2,7 +2,9 @@ import { newMockEvent } from "matchstick-as";
 import { ethereum, Address, BigInt, Bytes } from "@graphprotocol/graph-ts";
 import {
   AgentEscrowUpdated,
-  OracleUpdated,
+  RoleGranted,
+  RoleRevoked,
+  OracleEncryptionKeyUpdated,
   AgentJobSubmitted,
   RegenerationRequested,
 } from "../generated/EVMAIAgent/EVMAIAgent";
@@ -28,15 +30,58 @@ export function createAgentEscrowUpdatedEvent(
   return event;
 }
 
-export function createOracleUpdatedEvent(newOracle: Address): OracleUpdated {
-  let event = changetype<OracleUpdated>(newMockEvent());
+function roleEventParams(
+  role: Bytes,
+  account: Address,
+  sender: Address
+): Array<ethereum.EventParam> {
+  let params = new Array<ethereum.EventParam>();
+  params.push(
+    new ethereum.EventParam("role", ethereum.Value.fromFixedBytes(role))
+  );
+  params.push(
+    new ethereum.EventParam("account", ethereum.Value.fromAddress(account))
+  );
+  params.push(
+    new ethereum.EventParam("sender", ethereum.Value.fromAddress(sender))
+  );
+  return params;
+}
+
+export function createRoleGrantedEvent(
+  role: Bytes,
+  account: Address,
+  sender: Address,
+  logIndex: i32 = 1
+): RoleGranted {
+  let event = changetype<RoleGranted>(newMockEvent());
+  event.parameters = roleEventParams(role, account, sender);
+  event.logIndex = BigInt.fromI32(logIndex);
+  return event;
+}
+
+export function createRoleRevokedEvent(
+  role: Bytes,
+  account: Address,
+  sender: Address,
+  logIndex: i32 = 1
+): RoleRevoked {
+  let event = changetype<RoleRevoked>(newMockEvent());
+  event.parameters = roleEventParams(role, account, sender);
+  event.logIndex = BigInt.fromI32(logIndex);
+  return event;
+}
+
+export function createOracleEncryptionKeyUpdatedEvent(
+  newKey: Bytes,
+  logIndex: i32 = 1
+): OracleEncryptionKeyUpdated {
+  let event = changetype<OracleEncryptionKeyUpdated>(newMockEvent());
   event.parameters = new Array();
   event.parameters.push(
-    new ethereum.EventParam(
-      "newOracle",
-      ethereum.Value.fromAddress(newOracle)
-    )
+    new ethereum.EventParam("newKey", ethereum.Value.fromBytes(newKey))
   );
+  event.logIndex = BigInt.fromI32(logIndex);
   return event;
 }
 
