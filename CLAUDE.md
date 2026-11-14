@@ -177,9 +177,9 @@ bun run prepare:testnet && bun run codegen && bun run build
 ```
 
 **ABI Status (as of 2026-11-14 UTC):**
-- `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `922eec0`.
+- `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `527bb6e`.
 - Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `DirectPaymentProcessed`, `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
-- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the handlers already indexed has the same signature in both, so the subgraph keeps indexing the deployed contracts; the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after the owner publishes it with `setOracleEncryptionKey`. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
+- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the deployed contracts emit has the same signature in both, so the subgraph keeps indexing them (`OracleEncryptionKeyUpdated` changed signature, but no deployed contract has it); the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after an oracle publishes it with `setOracleEncryptionKey`, and is null again once that oracle loses its role. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
 
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.
 
