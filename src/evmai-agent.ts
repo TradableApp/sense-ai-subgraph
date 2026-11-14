@@ -267,10 +267,10 @@ export function handleAgentEscrowUpdated(event: AgentEscrowUpdated): void {
 
 // --- Oracle Set ---
 
-// The agent gates its oracle-only functions on this role. Other roles are not ours to index.
+// The agent gates its oracle-only functions on this role: keccak256("ORACLE_ROLE"). Other roles
+// are not ours to index.
 function isOracleRole(role: Bytes): boolean {
-  let oracleRole = crypto.keccak256(ByteArray.fromUTF8("ORACLE_ROLE"));
-  return role.toHexString() == oracleRole.toHexString();
+  return role.equals(crypto.keccak256(ByteArray.fromUTF8("ORACLE_ROLE")));
 }
 
 function newOracleChange(event: ethereum.Event, kind: string): OracleChange {
@@ -278,7 +278,12 @@ function newOracleChange(event: ethereum.Event, kind: string): OracleChange {
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
   let change = new OracleChange(id);
   change.kind = kind;
-  change.sender = event.transaction.from;
+  // Each kind fills its own fields below; the rest are null, stated rather than left unset.
+  change.oracle = null;
+  change.caller = null;
+  change.previousKey = null;
+  change.newKey = null;
+  change.txFrom = event.transaction.from;
   change.blockNumber = event.block.number;
   change.timestamp = event.block.timestamp;
   change.txHash = event.transaction.hash;
@@ -303,7 +308,7 @@ export function handleRoleGranted(event: RoleGranted): void {
 
   let change = newOracleChange(event, "ADDED");
   change.oracle = event.params.account;
-  change.sender = event.params.sender;
+  change.caller = event.params.sender;
   change.save();
 }
 
@@ -327,7 +332,7 @@ export function handleRoleRevoked(event: RoleRevoked): void {
 
   let change = newOracleChange(event, "REMOVED");
   change.oracle = event.params.account;
-  change.sender = event.params.sender;
+  change.caller = event.params.sender;
   change.save();
 }
 

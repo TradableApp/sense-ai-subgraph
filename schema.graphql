@@ -85,8 +85,8 @@ type ProtocolConfig @entity(immutable: false) {
 }
 
 # Mutable: One record per address that has ever held the oracle role. Several can be active at
-# once (a rotation adds the new oracle before it removes the old one). Current set:
-# oracles(where: { active: true }).
+# once (a rotation is meant to add the new oracle before removing the old one), and the set can
+# be empty. Current set: oracles(where: { active: true }).
 type Oracle @entity(immutable: false) {
   id: ID! # the oracle's address
   address: Bytes!
@@ -106,7 +106,8 @@ type OracleChange @entity(immutable: true) {
   oracle: Bytes # the oracle added or removed; null for "ENCRYPTION_KEY"
   previousKey: Bytes # "ENCRYPTION_KEY" only; null for the first publication
   newKey: Bytes # "ENCRYPTION_KEY" only
-  sender: Bytes! # who made the change: the caller the role event names, else the transaction's sender
+  caller: Bytes # "ADDED" / "REMOVED" only: the account that called the contract (the owner, or the oracle giving up its own role)
+  txFrom: Bytes! # the account that sent the transaction; under a multisig or a relayer this is not the caller
   blockNumber: BigInt!
   timestamp: BigInt!
   txHash: Bytes!
@@ -117,7 +118,7 @@ type TreasuryChange @entity(immutable: true) {
   id: ID! # txHash-logIndex
   previousTreasury: Bytes # null for the first one seen
   newTreasury: Bytes!
-  sender: Bytes! # the transaction's sender (for a multisig, the account that executed it)
+  txFrom: Bytes! # the account that sent the transaction (for a multisig, the account that executed it)
   blockNumber: BigInt!
   timestamp: BigInt!
   txHash: Bytes!
@@ -127,9 +128,9 @@ type TreasuryChange @entity(immutable: true) {
 type FeeChange @entity(immutable: true) {
   id: ID! # txHash-logIndex
   fee: String! # "PROMPT", "BRANCH", "CANCELLATION", "METADATA_UPDATE"
-  previousFee: BigInt! # what FeeConfig held before; 0 if no event for this fee was seen yet
+  previousFee: BigInt # null for the first event seen for this fee
   newFee: BigInt!
-  sender: Bytes! # the transaction's sender (for a multisig, the account that executed it)
+  txFrom: Bytes! # the account that sent the transaction (for a multisig, the account that executed it)
   blockNumber: BigInt!
   timestamp: BigInt!
   txHash: Bytes!

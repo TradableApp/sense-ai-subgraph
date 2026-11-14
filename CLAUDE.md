@@ -102,8 +102,8 @@ OracleChange / TreasuryChange / FeeChange (immutable) — keyed by txHash-logInd
 ### Key design invariants
 
 - **`PromptRequest.id` = `answerMessageId`** — this is the only ID available at cancellation time, so it's used as the primary key instead of `promptMessageId`. The escrowId also maps to `answerMessageId`, enabling cross-referencing between the two contracts.
-- **Oracles are a set, not one address.** The agent authorizes oracles through a role (`ORACLE_ROLE`, OpenZeppelin `RoleGranted` / `RoleRevoked`), and a rotation adds the new oracle before it removes the old one. `Oracle.active` is the current answer (`oracles(where: { active: true })`); there is no single `oracleAddress`. The handlers ignore every role except `ORACLE_ROLE`.
-- **Current value plus change history.** `ProtocolConfig` and `FeeConfig` hold the current value only. Every oracle, key, treasury and fee change is also written as its own immutable record (`OracleChange`, `TreasuryChange`, `FeeChange`) with the value before, the value after, the block, the time, the transaction and the sender. For a role event the sender is the caller the event names; for the others it is the transaction's sender, which under a multisig is the account that executed the transaction, not the multisig.
+- **Oracles are a set, not one address.** The agent authorizes oracles through a role (`ORACLE_ROLE`, OpenZeppelin `RoleGranted` / `RoleRevoked`), and a rotation is meant to add the new oracle before removing the old one; the set can also be empty. `Oracle.active` is the current answer (`oracles(where: { active: true })`); there is no single `oracleAddress`. The handlers ignore every role except `ORACLE_ROLE`.
+- **Current value plus change history.** `ProtocolConfig` and `FeeConfig` hold the current value only. Every oracle, key, treasury and fee change is also written as its own immutable record (`OracleChange`, `TreasuryChange`, `FeeChange`) with the value before (null for the first one seen), the value after, the block, the time and the transaction. `txFrom` on every record is the account that sent the transaction, which under a multisig is the account that executed it, not the multisig. `OracleChange.caller` (role records only) is the account that called the contract: the owner, or an oracle giving up its own role.
 - **`Conversation.lastMessageCreatedAt` is bumped on any state change** (new message, cancellation, refund, metadata update) so the sync service always picks up the change.
 - **`Activity` is the unified audit trail** — every billable user action creates one. `amount` is negative for costs and positive for refunds (in wei). Types: `CONVERSATION`, `BRANCH`, `CANCEL`, `REFUND`, `PLAN_UPDATE`, `PLAN_REVOKE`, `METADATA_UPDATE`.
 - **`createActivity()` is duplicated** in both mapping files — this is intentional due to AssemblyScript's lack of cross-file shared helpers in The Graph's module system.
@@ -175,10 +175,10 @@ cp artifacts/contracts/EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json ../sense-ai-su
 bun run prepare:testnet && bun run codegen && bun run build
 ```
 
-**ABI Status (as of 14 November 2026):**
+**ABI Status (as of 2026-11-14 UTC):**
 - `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `922eec0`.
 - Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `DirectPaymentProcessed`, `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
-- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the handlers already indexed has the same signature in both, so the subgraph keeps indexing the deployed contracts; the new handlers see their first events at the upgrade (its migration emits `RoleGranted` for the oracle already in place). Until then a subgraph built from this code reports an empty oracle set and no encryption key.
+- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the handlers already indexed has the same signature in both, so the subgraph keeps indexing the deployed contracts; the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after the owner publishes it with `setOracleEncryptionKey`. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
 
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.
 

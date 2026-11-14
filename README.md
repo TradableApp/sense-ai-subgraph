@@ -19,7 +19,7 @@ This project uses **Mustache** templates to manage multi-network deployments. DO
 
 - **Template:** `subgraph.template.yaml` (The structure)
 - **Configs:**
-  - `config/localhost.json` (Local Hardhat)
+  - `config/localnet.json` (Local Hardhat)
   - `config/base-testnet.json` (Testnet)
   - `config/base-mainnet.json` (Production)
 

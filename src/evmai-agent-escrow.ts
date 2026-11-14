@@ -155,11 +155,9 @@ export function handleSpendingLimitCancelled(
 function loadOrCreateFeeConfig(timestamp: BigInt): FeeConfig {
   let fees = FeeConfig.load("singleton");
   if (!fees) {
+    // Each fee stays unset until its own event is seen: the readers treat unset as "not known
+    // yet", and the change history must not claim a fee was 0 before its first event.
     fees = new FeeConfig("singleton");
-    fees.promptFee = BigInt.fromI32(0);
-    fees.branchFee = BigInt.fromI32(0);
-    fees.cancellationFee = BigInt.fromI32(0);
-    fees.metadataUpdateFee = BigInt.fromI32(0);
     fees.updatedAt = timestamp;
   }
   return fees;
@@ -176,9 +174,9 @@ function recordFeeChange(
     event.transaction.hash.toHexString() + "-" + event.logIndex.toString();
   let change = new FeeChange(id);
   change.fee = fee;
-  change.previousFee = previousFee ? previousFee : BigInt.fromI32(0);
+  change.previousFee = previousFee;
   change.newFee = newFee;
-  change.sender = event.transaction.from;
+  change.txFrom = event.transaction.from;
   change.blockNumber = event.block.number;
   change.timestamp = event.block.timestamp;
   change.txHash = event.transaction.hash;
@@ -241,7 +239,7 @@ export function handleTreasuryUpdated(event: TreasuryUpdated): void {
   let change = new TreasuryChange(id);
   change.previousTreasury = config.treasuryAddress;
   change.newTreasury = event.params.newTreasury;
-  change.sender = event.transaction.from;
+  change.txFrom = event.transaction.from;
   change.blockNumber = event.block.number;
   change.timestamp = event.block.timestamp;
   change.txHash = event.transaction.hash;
