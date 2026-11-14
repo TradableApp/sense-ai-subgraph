@@ -1,11 +1,4 @@
-import {
-  BigInt,
-  ByteArray,
-  Bytes,
-  crypto,
-  ethereum,
-  log,
-} from "@graphprotocol/graph-ts";
+import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -267,10 +260,14 @@ export function handleAgentEscrowUpdated(event: AgentEscrowUpdated): void {
 
 // --- Oracle Set ---
 
-// The agent gates its oracle-only functions on this role: keccak256("ORACLE_ROLE"). Other roles
-// are not ours to index.
+// The agent gates its oracle-only functions on this role: keccak256("ORACLE_ROLE"), as the
+// contract declares it. Other roles are not ours to index.
+const ORACLE_ROLE = Bytes.fromHexString(
+  "0x68e79a7bf1e0bc45d0a330c573bc367f9cf464fd326078812f301165fbda4ef1"
+);
+
 function isOracleRole(role: Bytes): boolean {
-  return role.equals(crypto.keccak256(ByteArray.fromUTF8("ORACLE_ROLE")));
+  return role.equals(ORACLE_ROLE);
 }
 
 function newOracleChange(event: ethereum.Event, kind: string): OracleChange {

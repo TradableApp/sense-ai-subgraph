@@ -155,8 +155,9 @@ export function handleSpendingLimitCancelled(
 function loadOrCreateFeeConfig(timestamp: BigInt): FeeConfig {
   let fees = FeeConfig.load("singleton");
   if (!fees) {
-    // Each fee stays unset until its own event is seen: the readers treat unset as "not known
-    // yet", and the change history must not claim a fee was 0 before its first event.
+    // Each fee stays unset until its own event is seen: the change history must not claim a fee
+    // was 0 before its first event. So a reader must check a fee for null before using it, as
+    // the existing ones do; FeeConfig existing does not mean every fee is known.
     fees = new FeeConfig("singleton");
     fees.updatedAt = timestamp;
   }

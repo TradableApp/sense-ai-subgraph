@@ -157,6 +157,12 @@ describe("Oracle set — who holds the oracle role now", () => {
     assert.entityCount("Oracle", 0);
     // The event did happen on chain, so the history keeps it.
     assert.fieldEquals("OracleChange", id, "kind", "REMOVED");
+
+    // Added again later, the address gets its record like any other oracle.
+    grant(ORACLE_ONE, 2);
+    assert.entityCount("Oracle", 1);
+    assert.fieldEquals("Oracle", ORACLE_ONE, "active", "true");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "removedAt", "null");
   });
 });
 
