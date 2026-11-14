@@ -80,7 +80,8 @@ type ProtocolConfig @entity(immutable: false) {
   id: ID! # always "singleton"
   escrowAddress: Bytes
   treasuryAddress: Bytes
-  oracleEncryptionKey: Bytes # secp256k1 public key, compressed or uncompressed; null until published
+  oracleEncryptionKey: Bytes # uncompressed secp256k1 public key; null until published and after it is withdrawn
+  oracleEncryptionKeyPublisher: Bytes # the oracle that published the current key; null while there is none
   updatedAt: BigInt!
 }
 
@@ -99,14 +100,14 @@ type Oracle @entity(immutable: false) {
 # --- Change History (who changed what, and when) ---
 # The singletons above hold the current value only. Each change is also kept as its own record.
 
-# Immutable: One record per oracle added, oracle removed, or encryption key published
+# Immutable: One record per oracle added, oracle removed, or encryption key published or withdrawn
 type OracleChange @entity(immutable: true) {
   id: ID! # txHash-logIndex
   kind: String! # "ADDED", "REMOVED", "ENCRYPTION_KEY"
   oracle: Bytes # the oracle added or removed; null for "ENCRYPTION_KEY"
-  previousKey: Bytes # "ENCRYPTION_KEY" only; null for the first publication
-  newKey: Bytes # "ENCRYPTION_KEY" only
-  caller: Bytes # "ADDED" / "REMOVED" only: the account that called the contract (the owner, or the oracle giving up its own role)
+  previousKey: Bytes # "ENCRYPTION_KEY" only; null when there was no key before
+  newKey: Bytes # "ENCRYPTION_KEY" only; null when the key was withdrawn (its publisher lost the oracle role)
+  caller: Bytes # "ADDED" / "REMOVED": the account that called the contract (the owner, or the oracle giving up its own role). "ENCRYPTION_KEY": the oracle that published; null for a withdrawal
   txFrom: Bytes! # the account that sent the transaction; under a multisig or a relayer this is not the caller
   blockNumber: BigInt!
   timestamp: BigInt!
