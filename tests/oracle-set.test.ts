@@ -56,6 +56,28 @@ function revoke(oracle: string, sender: string, logIndex: i32): string {
   return event.transaction.hash.toHexString() + "-" + logIndex.toString();
 }
 
+function grantAt(oracle: string, logIndex: i32, timestamp: i32): void {
+  let event = createRoleGrantedEvent(
+    Bytes.fromHexString(ORACLE_ROLE),
+    Address.fromString(oracle),
+    Address.fromString(OWNER),
+    logIndex
+  );
+  event.block.timestamp = BigInt.fromI32(timestamp);
+  handleRoleGranted(event);
+}
+
+function revokeAt(oracle: string, logIndex: i32, timestamp: i32): void {
+  let event = createRoleRevokedEvent(
+    Bytes.fromHexString(ORACLE_ROLE),
+    Address.fromString(oracle),
+    Address.fromString(OWNER),
+    logIndex
+  );
+  event.block.timestamp = BigInt.fromI32(timestamp);
+  handleRoleRevoked(event);
+}
+
 describe("Oracle set — who holds the oracle role now", () => {
   afterEach(() => {
     clearStore();
@@ -89,12 +111,19 @@ describe("Oracle set — who holds the oracle role now", () => {
   });
 
   test("an oracle added again after removal is active again, in the same record", () => {
-    grant(ORACLE_ONE, 1);
-    revoke(ORACLE_ONE, OWNER, 2);
-    grant(ORACLE_ONE, 3);
+    grantAt(ORACLE_ONE, 1, 1000);
+    revokeAt(ORACLE_ONE, 2, 2000);
+    assert.fieldEquals("Oracle", ORACLE_ONE, "active", "false");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "addedAt", "1000");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "removedAt", "2000");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "updatedAt", "2000");
 
+    grantAt(ORACLE_ONE, 3, 3000);
     assert.entityCount("Oracle", 1);
     assert.fieldEquals("Oracle", ORACLE_ONE, "active", "true");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "addedAt", "3000");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "removedAt", "null");
+    assert.fieldEquals("Oracle", ORACLE_ONE, "updatedAt", "3000");
   });
 
   test("a grant or revoke of any other role is ignored", () => {
@@ -144,10 +173,36 @@ describe("Oracle set — the history of changes", () => {
     assert.entityCount("OracleChange", 2);
     assert.fieldEquals("OracleChange", added, "kind", "ADDED");
     assert.fieldEquals("OracleChange", added, "oracle", ORACLE_ONE);
-    assert.fieldEquals("OracleChange", added, "sender", OWNER);
+    assert.fieldEquals("OracleChange", added, "caller", OWNER);
     assert.fieldEquals("OracleChange", removed, "kind", "REMOVED");
     assert.fieldEquals("OracleChange", removed, "oracle", ORACLE_ONE);
-    assert.fieldEquals("OracleChange", removed, "sender", ORACLE_ONE);
+    assert.fieldEquals("OracleChange", removed, "caller", ORACLE_ONE);
+    // A role record is not a key record.
+    assert.fieldEquals("OracleChange", added, "previousKey", "null");
+    assert.fieldEquals("OracleChange", added, "newKey", "null");
+    assert.fieldEquals("OracleChange", removed, "newKey", "null");
+  });
+
+  test("a role record keeps the caller the event names and the transaction's sender apart", () => {
+    // Under a multisig owner the caller is the multisig and the transaction's sender is the
+    // account that executed it. The mock event's transaction sender is not OWNER.
+    let event = createRoleGrantedEvent(
+      Bytes.fromHexString(ORACLE_ROLE),
+      Address.fromString(ORACLE_ONE),
+      Address.fromString(OWNER),
+      1
+    );
+    handleRoleGranted(event);
+    let id = event.transaction.hash.toHexString() + "-1";
+
+    assert.assertTrue(event.transaction.from.toHexString() != OWNER);
+    assert.fieldEquals("OracleChange", id, "caller", OWNER);
+    assert.fieldEquals(
+      "OracleChange",
+      id,
+      "txFrom",
+      event.transaction.from.toHexString()
+    );
   });
 
   test("a record carries the block, the time and the transaction", () => {
@@ -219,11 +274,13 @@ describe("Oracle encryption key — the key clients encrypt to", () => {
     assert.fieldEquals("OracleChange", firstId, "previousKey", "null");
     assert.fieldEquals("OracleChange", secondId, "newKey", KEY_TWO);
     assert.fieldEquals("OracleChange", secondId, "previousKey", KEY_ONE);
-    // The key event names no sender, so the record carries the transaction's sender.
+    // The key event names no caller, so the record has only the transaction's sender.
+    assert.fieldEquals("OracleChange", secondId, "caller", "null");
+    assert.fieldEquals("OracleChange", secondId, "oracle", "null");
     assert.fieldEquals(
       "OracleChange",
       secondId,
-      "sender",
+      "txFrom",
       second.transaction.from.toHexString()
     );
   });
