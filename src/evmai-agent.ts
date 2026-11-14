@@ -1,4 +1,4 @@
-import { BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
+import { Address, BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -340,12 +340,25 @@ export function handleOracleEncryptionKeyUpdated(
   if (!config) {
     config = new ProtocolConfig("singleton");
   }
+  // The contract withdraws the key when its publisher loses the oracle role, and says so with
+  // the zero address and no bytes. Stored as null, so "no key" has one representation.
+  let isWithdrawal = event.params.publisher.equals(Address.zero());
+
   let change = newOracleChange(event, "ENCRYPTION_KEY");
   change.previousKey = config.oracleEncryptionKey;
-  change.newKey = event.params.newKey;
+  if (!isWithdrawal) {
+    change.newKey = event.params.newKey;
+    change.caller = event.params.publisher;
+  }
   change.save();
 
-  config.oracleEncryptionKey = event.params.newKey;
+  if (isWithdrawal) {
+    config.oracleEncryptionKey = null;
+    config.oracleEncryptionKeyPublisher = null;
+  } else {
+    config.oracleEncryptionKey = event.params.newKey;
+    config.oracleEncryptionKeyPublisher = event.params.publisher;
+  }
   config.updatedAt = event.block.timestamp;
   config.save();
 }

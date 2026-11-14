@@ -30,9 +30,10 @@ const ORACLE_ONE = "0x00000000000000000000000000000000000000b1";
 const ORACLE_TWO = "0x00000000000000000000000000000000000000b2";
 const SINGLETON_ID = "singleton";
 
-// A compressed secp256k1 public key is 33 bytes: 0x02 or 0x03, then the x coordinate.
-const KEY_ONE = "0x02" + "11".repeat(32);
-const KEY_TWO = "0x03" + "22".repeat(32);
+// An uncompressed secp256k1 public key is 65 bytes: 0x04, then the x and y coordinates.
+const KEY_ONE = "0x04" + "11".repeat(64);
+const KEY_TWO = "0x04" + "22".repeat(64);
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 function grant(oracle: string, logIndex: i32 = 1): string {
   let event = createRoleGrantedEvent(
@@ -242,7 +243,11 @@ describe("Oracle encryption key — the key clients encrypt to", () => {
 
   test("the published key is the current key on ProtocolConfig", () => {
     handleOracleEncryptionKeyUpdated(
-      createOracleEncryptionKeyUpdatedEvent(Bytes.fromHexString(KEY_ONE), 1)
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ORACLE_ONE),
+        Bytes.fromHexString(KEY_ONE),
+        1
+      )
     );
 
     assert.entityCount("ProtocolConfig", 1);
@@ -252,15 +257,23 @@ describe("Oracle encryption key — the key clients encrypt to", () => {
       "oracleEncryptionKey",
       KEY_ONE
     );
+    assert.fieldEquals(
+      "ProtocolConfig",
+      SINGLETON_ID,
+      "oracleEncryptionKeyPublisher",
+      ORACLE_ONE
+    );
   });
 
   test("a second publication replaces the current key and the history keeps both", () => {
     let first = createOracleEncryptionKeyUpdatedEvent(
+      Address.fromString(ORACLE_ONE),
       Bytes.fromHexString(KEY_ONE),
       1
     );
     handleOracleEncryptionKeyUpdated(first);
     let second = createOracleEncryptionKeyUpdatedEvent(
+      Address.fromString(ORACLE_ONE),
       Bytes.fromHexString(KEY_TWO),
       2
     );
@@ -280,8 +293,8 @@ describe("Oracle encryption key — the key clients encrypt to", () => {
     assert.fieldEquals("OracleChange", firstId, "previousKey", "null");
     assert.fieldEquals("OracleChange", secondId, "newKey", KEY_TWO);
     assert.fieldEquals("OracleChange", secondId, "previousKey", KEY_ONE);
-    // The key event names no caller, so the record has only the transaction's sender.
-    assert.fieldEquals("OracleChange", secondId, "caller", "null");
+    // The oracle that published is the caller; `oracle` is for an oracle added or removed.
+    assert.fieldEquals("OracleChange", secondId, "caller", ORACLE_ONE);
     assert.fieldEquals("OracleChange", secondId, "oracle", "null");
     assert.fieldEquals(
       "OracleChange",
@@ -289,5 +302,73 @@ describe("Oracle encryption key — the key clients encrypt to", () => {
       "txFrom",
       second.transaction.from.toHexString()
     );
+  });
+  test("a withdrawn key leaves no current key or publisher, and the history says what was withdrawn", () => {
+    handleOracleEncryptionKeyUpdated(
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ORACLE_ONE),
+        Bytes.fromHexString(KEY_ONE),
+        1
+      )
+    );
+    // The contract withdraws the key when its publisher loses the oracle role: zero address
+    // and zero-length bytes (`Bytes.empty()` would be four zero bytes, not what the chain sends).
+    let withdrawal = createOracleEncryptionKeyUpdatedEvent(
+      Address.fromString(ZERO_ADDRESS),
+      new Bytes(0),
+      2
+    );
+    handleOracleEncryptionKeyUpdated(withdrawal);
+    let id = withdrawal.transaction.hash.toHexString() + "-2";
+
+    assert.fieldEquals(
+      "ProtocolConfig",
+      SINGLETON_ID,
+      "oracleEncryptionKey",
+      "null"
+    );
+    assert.fieldEquals(
+      "ProtocolConfig",
+      SINGLETON_ID,
+      "oracleEncryptionKeyPublisher",
+      "null"
+    );
+    assert.fieldEquals("OracleChange", id, "kind", "ENCRYPTION_KEY");
+    assert.fieldEquals("OracleChange", id, "previousKey", KEY_ONE);
+    assert.fieldEquals("OracleChange", id, "newKey", "null");
+    assert.fieldEquals("OracleChange", id, "caller", "null");
+  });
+
+  test("a key published after a withdrawal has no previous key", () => {
+    handleOracleEncryptionKeyUpdated(
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ORACLE_ONE),
+        Bytes.fromHexString(KEY_ONE),
+        1
+      )
+    );
+    handleOracleEncryptionKeyUpdated(
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ZERO_ADDRESS),
+        new Bytes(0),
+        2
+      )
+    );
+    let republished = createOracleEncryptionKeyUpdatedEvent(
+      Address.fromString(ORACLE_TWO),
+      Bytes.fromHexString(KEY_TWO),
+      3
+    );
+    handleOracleEncryptionKeyUpdated(republished);
+    let id = republished.transaction.hash.toHexString() + "-3";
+
+    assert.fieldEquals(
+      "ProtocolConfig",
+      SINGLETON_ID,
+      "oracleEncryptionKeyPublisher",
+      ORACLE_TWO
+    );
+    assert.fieldEquals("OracleChange", id, "previousKey", "null");
+    assert.fieldEquals("OracleChange", id, "newKey", KEY_TWO);
   });
 });

@@ -32,10 +32,10 @@ import {
 } from "./admin-config-utils";
 
 const ESCROW_ADDRESS = "0x0000000000000000000000000000000000000002";
-// A compressed secp256k1 public key is 33 bytes: 0x02 or 0x03, then the x coordinate.
-const ORACLE_KEY =
-  "0x02" + "11".repeat(32);
+// An uncompressed secp256k1 public key is 65 bytes: 0x04, then the x and y coordinates.
+const ORACLE_KEY = "0x04" + "11".repeat(64);
 const TREASURY_ADDRESS = "0x0000000000000000000000000000000000000004";
+const ORACLE_ADDRESS = "0x0000000000000000000000000000000000000005";
 const USER_ADDRESS = "0x0000000000000000000000000000000000000001";
 const SINGLETON_ID = "singleton";
 
@@ -104,7 +104,10 @@ describe("ProtocolConfig — TreasuryUpdated", () => {
       createAgentEscrowUpdatedEvent(Address.fromString(ESCROW_ADDRESS))
     );
     handleOracleEncryptionKeyUpdated(
-      createOracleEncryptionKeyUpdatedEvent(Bytes.fromHexString(ORACLE_KEY))
+      createOracleEncryptionKeyUpdatedEvent(
+        Address.fromString(ORACLE_ADDRESS),
+        Bytes.fromHexString(ORACLE_KEY)
+      )
     );
     handleTreasuryUpdated(
       createTreasuryUpdatedEvent(Address.fromString(TREASURY_ADDRESS))

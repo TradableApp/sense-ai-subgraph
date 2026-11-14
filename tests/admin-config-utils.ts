@@ -73,11 +73,15 @@ export function createRoleRevokedEvent(
 }
 
 export function createOracleEncryptionKeyUpdatedEvent(
+  publisher: Address,
   newKey: Bytes,
   logIndex: i32 = 1
 ): OracleEncryptionKeyUpdated {
   let event = changetype<OracleEncryptionKeyUpdated>(newMockEvent());
   event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam("publisher", ethereum.Value.fromAddress(publisher))
+  );
   event.parameters.push(
     new ethereum.EventParam("newKey", ethereum.Value.fromBytes(newKey))
   );
