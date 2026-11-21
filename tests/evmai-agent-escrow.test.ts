@@ -386,7 +386,7 @@ describe("SpendingLimit — upsert behaviour", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Escrow PromptCancelled — the payment is settled, so it leaves PENDING
+// Escrow PromptCancelled — the payment is settled (CANCELLED), not left PENDING
 // ---------------------------------------------------------------------------
 describe("handlePromptCancelled (Escrow) — the payment", () => {
   afterEach(() => {
