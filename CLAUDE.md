@@ -75,10 +75,12 @@ Both handlers write to the shared `Activity` entity to produce a unified audit l
 | File | Network |
 |------|---------|
 | `config/localnet.json` | Local Graph node |
-| `config/base-testnet.json` | Base Sepolia (current testnet deployment) |
+| `config/base-testnet.json` | Base Sepolia |
 | `config/base-mainnet.json` | Base mainnet |
 
 Contract addresses and `startBlock` values live in these config files.
+
+**One subgraph deployment per escrow.** Each config names one agent and one escrow, and `ProtocolConfig` and `FeeConfig` are singletons (id `"singleton"`, `schema.graphql`; loaded by that id in `src/evmai-agent.ts` and `src/evmai-agent-escrow.ts`). A subgraph that indexed a second escrow would write its fees and treasury over the first one's, so a new agent and escrow pair gets a deployment of its own, with its own config and start block.
 
 ### Schema entity relationships
 
@@ -161,7 +163,7 @@ host. Contract tests run on a recording of Base Sepolia blocks 48212900-48216700
 |---------|-------------|
 | `tokenized-ai-agent` | Source of truth for contract events; `abis/` must match compiled artifacts from this repo |
 | `sense-ai-dapp` | Consumes this subgraph's GraphQL API for all read queries; writes go directly to contracts |
-| `able-contracts` | AbleToken events are not currently indexed by this subgraph |
+| `sense-contracts` / `able-contracts` | The fee token (`SenseToken` for SenseAI; `AbleToken` is the other token the escrow supports). No token events are indexed: fees and payments are read from the escrow's events |
 
 ### ABI Sync
 
@@ -179,21 +181,16 @@ cp artifacts/contracts/EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json ../sense-ai-su
 bun run prepare:testnet && bun run codegen && bun run build
 ```
 
-**ABI Status (as of 2026-11-14 UTC):**
-- `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `527bb6e`.
-- Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `DirectPaymentProcessed`, `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
-- These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the deployed contracts emit has the same signature in both, so the subgraph keeps indexing them (`OracleEncryptionKeyUpdated` changed signature, but no deployed contract has it); the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after an oracle publishes it with `setOracleEncryptionKey`, and is null again once that oracle loses its role. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
+**ABI status:**
+- `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json` carry every event the current `tokenized-ai-agent` contracts declare. To check, compile there and compare the `abi` arrays of its `artifacts/contracts/EVMAIAgent.sol/EVMAIAgent.json` and `EVMAIAgentEscrow.sol/EVMAIAgentEscrow.json` with these files.
+- Events in the ABIs that no handler indexes: `PromptRefunded` (agent), `RefundRecordFailed` and `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferStarted`, `OwnershipTransferred`, `RoleAdminChanged`, on both contracts where they exist) are not indexed on purpose. Compare the event list in `subgraph.template.yaml` with the ABIs to recompute this.
+- Base Sepolia and Base mainnet each get a fresh pair deployed from the current contracts, so every event in these ABIs is the one the pair emits. On a fresh pair the first oracle's `RoleGranted` comes from the agent's `initialize`, and the four fee events and `TreasuryUpdated` from the escrow's, so `Oracle` and `FeeConfig` are filled from the pair's first block. The encryption key appears only after an oracle publishes it with `setOracleEncryptionKey`, and is null again once that oracle loses its role.
 
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.
 
-### Deployed Addresses (Base Sepolia)
+### Deployed Addresses
 
-| Contract | Proxy Address |
-|----------|--------------|
-| EVMAIAgent | `0x4a0C7e5807f9174499a8F56F2C69c61b39a4c64D` |
-| EVMAIAgentEscrow | `0x36ec08471F2b995024967204D7542713cFaf5Fa4` |
-
-These must match `config/base-testnet.json`. The `startBlock` in that config must be ≤ the block the proxy contracts were first deployed at.
+The addresses of each network's fresh pair are filled on deploy day in `config/base-testnet.json` and `config/base-mainnet.json`. Each config's `startBlock` must be ≤ the block the proxy contracts were first deployed at.
 
 ### dApp Polling Pattern
 
@@ -201,7 +198,7 @@ These must match `config/base-testnet.json`. The `startBlock` in that config mus
 - `GET_USER_UPDATES_QUERY` — polls `promptRequests(where: { isAnswered: false })` to detect new answers
 - `GET_RECENT_ACTIVITY_QUERY` — queries the `Activity` entity for spending history
 
-The `Activity.amount` field is negative for costs and positive for refunds (in wei).
+The `Activity.amount` field is in wei: negative for costs, positive for money returned to the user. A `REFUND` row and a `CANCEL_RETURN` row are both positive; a `CANCEL_RETURN` is the escrowed amount handed back by a cancel, not a refund.
 
 ## Local E2E Deployment (Fresh Hardhat)
 
