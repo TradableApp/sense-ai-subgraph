@@ -52,12 +52,12 @@ type PromptRequest @entity(immutable: false) {
 
 # --- Financial Entities ---
 
-# Mutable: Status changes from PENDING -> COMPLETE
+# Mutable: Status changes from PENDING to COMPLETE (answered), REFUNDED or CANCELLED
 type Payment @entity(immutable: false) {
   id: ID! # escrowId
   user: Bytes!
   amount: BigInt!
-  status: String! # "PENDING", "COMPLETE", "REFUNDED"
+  status: String! # "PENDING", "COMPLETE", "REFUNDED", "CANCELLED"
   createdAt: BigInt!
   finalizedAt: BigInt
   txHash: String!
