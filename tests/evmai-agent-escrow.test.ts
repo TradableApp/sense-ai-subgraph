@@ -137,7 +137,7 @@ describe("handlePaymentRefunded", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Escrow PromptCancelled → creates Activity only, does NOT touch PromptRequest
+// Escrow PromptCancelled → creates an Activity and settles the Payment; does NOT touch PromptRequest
 // ---------------------------------------------------------------------------
 describe("handlePromptCancelled (Escrow)", () => {
   beforeAll(() => {

@@ -128,6 +128,16 @@ export function handlePromptCancelled(event: PromptCancelled): void {
   }
 
   createActivity(event, event.params.user, "CANCEL", cancellationFee.neg());
+
+  // The escrow returns the amount and closes its record on a cancel, and its id is the answer
+  // message id. Left at PENDING, the payment would be listed as stuck and offered a refund the
+  // contract refuses.
+  let payment = Payment.load(event.params.answerMessageId.toString());
+  if (payment) {
+    payment.status = "CANCELLED";
+    payment.finalizedAt = event.block.timestamp;
+    payment.save();
+  }
 }
 
 export function handleSpendingLimitSet(event: SpendingLimitSet): void {
