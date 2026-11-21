@@ -386,6 +386,70 @@ describe("SpendingLimit — upsert behaviour", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Escrow PromptCancelled — the payment is settled, so it leaves PENDING
+// ---------------------------------------------------------------------------
+describe("handlePromptCancelled (Escrow) — the payment", () => {
+  afterEach(() => {
+    clearStore();
+  });
+
+  // The escrow returns the amount and closes its record on a cancel. A payment left at
+  // PENDING is listed as stuck and later offered a refund the contract refuses.
+  test("a cancelled prompt's Payment is CANCELLED and finalizedAt is set", () => {
+    seedConversationAndRequest();
+    handlePaymentEscrowed(
+      createPaymentEscrowedEvent(
+        BigInt.fromString(ANSWER_MSG_ID),
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(AMOUNT)
+      )
+    );
+    handlePromptCancelled(
+      createEscrowPromptCancelledEvent(
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(ANSWER_MSG_ID)
+      )
+    );
+
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "CANCELLED");
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "finalizedAt", "1");
+  });
+
+  test("the amount and the user of the Payment are left as they were", () => {
+    seedConversationAndRequest();
+    handlePaymentEscrowed(
+      createPaymentEscrowedEvent(
+        BigInt.fromString(ANSWER_MSG_ID),
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(AMOUNT)
+      )
+    );
+    handlePromptCancelled(
+      createEscrowPromptCancelledEvent(
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(ANSWER_MSG_ID)
+      )
+    );
+
+    assert.fieldEquals("Payment", ANSWER_MSG_ID, "amount", AMOUNT);
+    assert.entityCount("Payment", 1);
+  });
+
+  test("a cancel with no Payment indexed creates none and still records the activity", () => {
+    seedConversationAndRequest();
+    handlePromptCancelled(
+      createEscrowPromptCancelledEvent(
+        Address.fromString(USER_ADDRESS),
+        BigInt.fromString(ANSWER_MSG_ID)
+      )
+    );
+
+    assert.entityCount("Payment", 0);
+    assert.entityCount("Activity", 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Escrow PromptCancelled — Activity amount uses cancellationFee
 // ---------------------------------------------------------------------------
 describe("handlePromptCancelled (Escrow) — Activity details", () => {
