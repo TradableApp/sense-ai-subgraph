@@ -7,7 +7,7 @@
  *   1. explicit env vars — EVMAI_AGENT_ADDRESS, EVMAI_AGENT_ESCROW_ADDRESS, START_BLOCK
  *   2. ADDRESSES_FILE — path to the canonical flat addresses.json the e2e
  *      orchestrator (sense-ai-e2e) writes, e.g.
- *      { "chainId": 31337, "ABLE": "0x..", "EVMAIAgent": "0x..", "EVMAIAgentEscrow": "0x.." }
+ *      { "chainId": 31337, "token": "0x..", "feeToken": "SENSE", "EVMAIAgent": "0x..", "EVMAIAgentEscrow": "0x.." }
  *   3. Hardhat deterministic defaults (a Warning is logged whenever a default is used)
  *
  * Writes to config/localnet.json.

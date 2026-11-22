@@ -52,7 +52,7 @@ Input sources, in precedence order (first wins):
    - `EVMAI_AGENT_ADDRESS`: EVMAIAgent proxy address
    - `EVMAI_AGENT_ESCROW_ADDRESS`: EVMAIAgentEscrow proxy address
    - `START_BLOCK`: Block height to start indexing from
-2. `ADDRESSES_FILE`: path to the flat `addresses.json` the e2e orchestrator (`sense-ai-e2e`) writes — `{ "chainId": 31337, "ABLE": "0x..", "EVMAIAgent": "0x..", "EVMAIAgentEscrow": "0x.." }`. Read via the `EVMAIAgent` / `EVMAIAgentEscrow` keys.
+2. `ADDRESSES_FILE`: path to the flat `addresses.json` the e2e orchestrator (`sense-ai-e2e`) writes — `{ "chainId": 31337, "token": "0x..", "feeToken": "SENSE", "EVMAIAgent": "0x..", "EVMAIAgentEscrow": "0x.." }` (`feeToken` is the token's symbol). Read via the `EVMAIAgent` / `EVMAIAgentEscrow` keys.
 3. Hardhat deterministic defaults — `EVMAIAgent` `0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9`, `EVMAIAgentEscrow` `0x5FC8d32690cc91D4c39d9d3abcBD16989F875707`, `startBlock` `0`. A **Warning** is logged whenever an address falls back to a default, so a missing input can't silently masquerade as success.
 
 The generator (`scripts/gen-localnet-config.js`) validates address format and block number before writing.
