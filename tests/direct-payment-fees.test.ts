@@ -16,7 +16,7 @@ import {
   createMetadataUpdateRequestedEvent,
 } from "./evmai-agent-utils";
 import { createDirectPaymentProcessedEvent } from "./evmai-agent-escrow-utils";
-import { FeeConfig } from "../generated/schema";
+import { FeeConfig, PendingDirectPayment } from "../generated/schema";
 
 // The escrow emits DirectPaymentProcessed(user, amount) for a branch or a metadata update, in
 // the same transaction and before the agent's BranchRequested / MetadataUpdateRequested. The
@@ -168,5 +168,83 @@ describe("Branch and metadata fees from DirectPaymentProcessed", () => {
 
     // The 700 belongs to another transaction: FeeConfig.branchFee 500 -> -500.
     assert.fieldEquals("Activity", activityId(event), "amount", "-500");
+  });
+
+  test("a payment of zero is recorded as zero, not replaced by FeeConfig.branchFee", () => {
+    seedFeeConfig();
+    directPayment(USER_ADDRESS, 0, 1);
+    let event = branch(USER_ADDRESS, 2);
+
+    // The event says nothing was paid; FeeConfig's 500 is not used: amount = 0.
+    assert.fieldEquals("Activity", activityId(event), "type", "BRANCH");
+    assert.fieldEquals("Activity", activityId(event), "amount", "0");
+    assert.entityCount("PendingDirectPayment", 0);
+  });
+
+  test("a metadata update paid zero is recorded as zero, not FeeConfig.metadataUpdateFee", () => {
+    seedFeeConfig();
+    directPayment(USER_ADDRESS, 0, 1);
+    let event = metadataUpdate(USER_ADDRESS, 2);
+
+    // FeeConfig's 200 is not used: amount = 0.
+    assert.fieldEquals("Activity", activityId(event), "amount", "0");
+    assert.entityCount("PendingDirectPayment", 0);
+  });
+
+  test("taking an entry from the middle of the queue keeps the entries before and after it", () => {
+    seedFeeConfig();
+    // Queue [user 300, other 700, user 900]; the other user's branch takes the middle entry.
+    directPayment(USER_ADDRESS, 300, 1);
+    directPayment(OTHER_USER_ADDRESS, 700, 2);
+    directPayment(USER_ADDRESS, 900, 3);
+    let theirs = branch(OTHER_USER_ADDRESS, 4);
+    assert.fieldEquals("Activity", activityId(theirs), "amount", "-700");
+
+    // Left: [user 300, user 900], users and amounts still side by side.
+    let pending = PendingDirectPayment.load(theirs.transaction.hash.toHexString());
+    assert.assertNotNull(pending);
+    let users = pending!.users;
+    let amounts = pending!.amounts;
+    assert.i32Equals(2, users.length);
+    assert.i32Equals(2, amounts.length);
+    assert.bytesEquals(Address.fromString(USER_ADDRESS), users[0]);
+    assert.bytesEquals(Address.fromString(USER_ADDRESS), users[1]);
+    assert.bigIntEquals(BigInt.fromI32(300), amounts[0]);
+    assert.bigIntEquals(BigInt.fromI32(900), amounts[1]);
+
+    // And they pair with the user's branches in order: 300 then 900.
+    let first = branch(USER_ADDRESS, 5);
+    let second = branch(USER_ADDRESS, 6);
+    assert.fieldEquals("Activity", activityId(first), "amount", "-300");
+    assert.fieldEquals("Activity", activityId(second), "amount", "-900");
+    assert.entityCount("PendingDirectPayment", 0);
+  });
+
+  test("a branch and a metadata update by one user in one transaction each take their own payment", () => {
+    seedFeeConfig();
+    directPayment(USER_ADDRESS, 700, 1);
+    let branchEvent = branch(USER_ADDRESS, 3);
+    directPayment(USER_ADDRESS, 250, 4);
+    let metadataEvent = metadataUpdate(USER_ADDRESS, 6);
+
+    // Each action pairs with the payment the escrow made for it: -700 and -250.
+    assert.fieldEquals("Activity", activityId(branchEvent), "type", "BRANCH");
+    assert.fieldEquals("Activity", activityId(branchEvent), "amount", "-700");
+    assert.fieldEquals("Activity", activityId(metadataEvent), "type", "METADATA_UPDATE");
+    assert.fieldEquals("Activity", activityId(metadataEvent), "amount", "-250");
+    assert.entityCount("PendingDirectPayment", 0);
+  });
+
+  test("payments queued before a metadata update and a branch pair by order, whatever the action", () => {
+    seedFeeConfig();
+    directPayment(USER_ADDRESS, 250, 1);
+    directPayment(USER_ADDRESS, 700, 2);
+    let metadataEvent = metadataUpdate(USER_ADDRESS, 3);
+    let branchEvent = branch(USER_ADDRESS, 4);
+
+    // First in, first out across both kinds: 250 to the metadata update, 700 to the branch.
+    assert.fieldEquals("Activity", activityId(metadataEvent), "amount", "-250");
+    assert.fieldEquals("Activity", activityId(branchEvent), "amount", "-700");
+    assert.entityCount("PendingDirectPayment", 0);
   });
 });

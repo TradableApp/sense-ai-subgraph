@@ -161,7 +161,11 @@ export function handlePromptCancelled(event: PromptCancelled): void {
 
 // The escrow emits this for a branch or a metadata update, before the agent's BranchRequested /
 // MetadataUpdateRequested in the same transaction. Queue the amount by transaction so the
-// agent's handler records what was paid rather than the fee configured at the time.
+// agent's handler records the amount this event carries. With these contracts that is the same
+// number as the fee in force (FeeConfig follows the fee events in log order); what is gained is
+// that the amount no longer depends on FeeConfig being complete, where a fee whose *FeeUpdated was
+// never indexed (a start block after initialize) is recorded as 0. The CANCEL row's fee still
+// comes from FeeConfig (see handlePromptCancelled): PromptCancelled carries no fee.
 export function handleDirectPaymentProcessed(
   event: DirectPaymentProcessed
 ): void {
