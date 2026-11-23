@@ -143,7 +143,9 @@ export function handlePromptCancelled(event: PromptCancelled): void {
     payment.save();
 
     // The amount handed back is its own row, so the prompt's CONVERSATION row, this CANCEL row
-    // and the return sum to what the cancel cost: minus the cancellation fee.
+    // and the return sum to what the cancel cost: minus the cancellation fee. The escrow's
+    // cancelPrompt hands back payment.amount in full and takes the fee by a separate transfer
+    // from the user to the treasury; the fee is not deducted from this return.
     createActivity(
       event,
       event.params.user,
@@ -171,13 +173,15 @@ export function handleDirectPaymentProcessed(
 ): void {
   let id = event.transaction.hash.toHexString();
   let pending = PendingDirectPayment.load(id);
-  let users = new Array<Bytes>();
-  let amounts = new Array<BigInt>();
+  let users: Array<Bytes>;
+  let amounts: Array<BigInt>;
   if (pending) {
     users = pending.users;
     amounts = pending.amounts;
   } else {
     pending = new PendingDirectPayment(id);
+    users = new Array<Bytes>();
+    amounts = new Array<BigInt>();
   }
   pending.users = users.concat([changetype<Bytes>(event.params.user)]);
   pending.amounts = amounts.concat([event.params.amount]);

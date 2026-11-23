@@ -437,15 +437,22 @@ describe("handlePromptCancelled (Escrow) — the payment", () => {
 
   test("a cancel with no Payment indexed creates none and still records the activity", () => {
     seedConversationAndRequest();
-    handlePromptCancelled(
-      createEscrowPromptCancelledEvent(
-        Address.fromString(USER_ADDRESS),
-        BigInt.fromString(ANSWER_MSG_ID)
-      )
+    let cancelEvent = createEscrowPromptCancelledEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(ANSWER_MSG_ID)
     );
+    handlePromptCancelled(cancelEvent);
 
+    let cancelId =
+      cancelEvent.transaction.hash.toHexString() +
+      "-" +
+      cancelEvent.logIndex.toString();
     assert.entityCount("Payment", 0);
+    // The fee was taken, so the CANCEL row stands alone; no return row is written, since the
+    // amount handed back is not known without the Payment.
     assert.entityCount("Activity", 1);
+    assert.fieldEquals("Activity", cancelId, "type", "CANCEL");
+    assert.notInStore("Activity", cancelId + "-return");
   });
 });
 
