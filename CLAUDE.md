@@ -95,6 +95,8 @@ Payment (mutable) — keyed by escrowId
 SpendingLimit (mutable) — keyed by user address (one per user)
 Activity (immutable) — keyed by txHash-logIndex (a cancel's CANCEL_RETURN row: txHash-logIndex-return)
 PendingDirectPayment (mutable, short-lived) — keyed by tx hash; escrow payment amounts waiting for their agent event
+AgentJob (immutable) — keyed by txHash-logIndex; one per AgentJobSubmitted
+RegenerationRequest (immutable) — keyed by txHash-logIndex; one per RegenerationRequested
 
 ProtocolConfig (mutable singleton) — escrow address, treasury address, oracle encryption key
 FeeConfig (mutable singleton) — the four fees
@@ -152,6 +154,8 @@ host. Contract tests run on a recording of Base Sepolia blocks 48212900-48216700
 | `SpendingLimitCancelled` | EVMAIAgentEscrow | `handleSpendingLimitCancelled` | `store.remove('SpendingLimit', userAddress)` |
 | `BranchRequested` | EVMAIAgent | `handleBranchRequested` | `BRANCH` Activity for the queued `DirectPaymentProcessed` amount, else `FeeConfig.branchFee` |
 | `MetadataUpdateRequested` | EVMAIAgent | `handleMetadataUpdateRequested` | `METADATA_UPDATE` Activity for the queued `DirectPaymentProcessed` amount, else `FeeConfig.metadataUpdateFee` |
+| `AgentJobSubmitted` | EVMAIAgent | `handleAgentJobSubmitted` | Creates an immutable `AgentJob` record (id = `txHash-logIndex`) |
+| `RegenerationRequested` | EVMAIAgent | `handleRegenerationRequested` | Creates an immutable `RegenerationRequest` record (id = `txHash-logIndex`) |
 
 ### `isDeleted` Invariant
 
