@@ -6,6 +6,7 @@ import {
   SpendingLimitSet,
   SpendingLimitCancelled,
   PromptCancelled,
+  DirectPaymentProcessed,
   PromptFeeUpdated,
   BranchFeeUpdated,
   CancellationFeeUpdated,
@@ -22,17 +23,20 @@ import {
   ProtocolConfig,
   TreasuryChange,
   FeeChange,
+  PendingDirectPayment,
 } from "../generated/schema";
 
-// Helper function to create activities
+// Helper function to create activities. The id is txHash-logIndex; a second row written for
+// the same event (the amount a cancel hands back) passes a suffix so the ids stay distinct.
 function createActivity(
   event: ethereum.Event,
   user: Bytes,
   type: String,
-  amount: BigInt
+  amount: BigInt,
+  idSuffix: string = ""
 ): void {
   let activity = new Activity(
-    event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString() + idSuffix
   );
   activity.user = user;
   activity.type = type.toString();
@@ -137,7 +141,51 @@ export function handlePromptCancelled(event: PromptCancelled): void {
     payment.status = "CANCELLED";
     payment.finalizedAt = event.block.timestamp;
     payment.save();
+
+    // The amount handed back is its own row, so the prompt's CONVERSATION row, this CANCEL row
+    // and the return sum to what the cancel cost: minus the cancellation fee. The escrow's
+    // cancelPrompt hands back payment.amount in full and takes the fee by a separate transfer
+    // from the user to the treasury; the fee is not deducted from this return.
+    createActivity(
+      event,
+      event.params.user,
+      "CANCEL_RETURN",
+      payment.amount,
+      "-return"
+    );
+  } else {
+    log.warning(
+      "[handlePromptCancelled] no Payment indexed for escrow {} — returned amount not recorded",
+      [event.params.answerMessageId.toString()]
+    );
   }
+}
+
+// The escrow emits this for a branch or a metadata update, before the agent's BranchRequested /
+// MetadataUpdateRequested in the same transaction. Queue the amount by transaction so the
+// agent's handler records the amount this event carries. With these contracts that is the same
+// number as the fee in force (FeeConfig follows the fee events in log order); what is gained is
+// that the amount no longer depends on FeeConfig being complete, where a fee whose *FeeUpdated was
+// never indexed (a start block after initialize) is recorded as 0. The CANCEL row's fee still
+// comes from FeeConfig (see handlePromptCancelled): PromptCancelled carries no fee.
+export function handleDirectPaymentProcessed(
+  event: DirectPaymentProcessed
+): void {
+  let id = event.transaction.hash.toHexString();
+  let pending = PendingDirectPayment.load(id);
+  let users: Array<Bytes>;
+  let amounts: Array<BigInt>;
+  if (pending) {
+    users = pending.users;
+    amounts = pending.amounts;
+  } else {
+    pending = new PendingDirectPayment(id);
+    users = new Array<Bytes>();
+    amounts = new Array<BigInt>();
+  }
+  pending.users = users.concat([changetype<Bytes>(event.params.user)]);
+  pending.amounts = amounts.concat([event.params.amount]);
+  pending.save();
 }
 
 export function handleSpendingLimitSet(event: SpendingLimitSet): void {

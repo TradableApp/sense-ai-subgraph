@@ -1,4 +1,11 @@
-import { Address, BigInt, Bytes, ethereum, log } from "@graphprotocol/graph-ts";
+import {
+  Address,
+  BigInt,
+  Bytes,
+  ethereum,
+  log,
+  store,
+} from "@graphprotocol/graph-ts";
 import {
   ConversationAdded,
   PromptMessageAdded,
@@ -29,6 +36,7 @@ import {
   FeeConfig,
   Oracle,
   OracleChange,
+  PendingDirectPayment,
 } from "../generated/schema";
 
 // Helper function to create activities
@@ -49,8 +57,9 @@ function createActivity(
   activity.save();
 }
 
-// Read fees from the indexed FeeConfig singleton (populated by the *FeeUpdated events,
-// incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls" best practice,
+// The fallback when the escrow emitted no DirectPaymentProcessed for the action (see
+// takeDirectPayment). Read fees from the indexed FeeConfig singleton (populated by the
+// *FeeUpdated events, incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls" best practice,
 // and an eth_call also breaks graph-node↔Hardhat on localnet. Typed (not string-keyed) so
 // an unknown field can't silently fall through to 0. If FeeConfig is missing (the
 // initialize() fee events haven't been indexed — see tokenized-ai-agent #39), we log a
@@ -233,8 +242,53 @@ export function handlePromptCancelled(event: PromptCancelled): void {
 
 // --- Activity Handlers for Direct Actions ---
 
+// Takes the first amount the escrow's DirectPaymentProcessed queued for this user in this
+// transaction (see handleDirectPaymentProcessed), removing it so a second paid action in the same
+// transaction pairs with the next one. Null when none is queued: an escrow that does not emit the
+// event, or a transaction it did not come from.
+function takeDirectPayment(event: ethereum.Event, user: Address): BigInt | null {
+  let id = event.transaction.hash.toHexString();
+  let pending = PendingDirectPayment.load(id);
+  if (pending == null) {
+    return null;
+  }
+  let users = pending.users;
+  let amounts = pending.amounts;
+  let index = -1;
+  for (let i = 0; i < users.length; i++) {
+    if (users[i].equals(user)) {
+      index = i;
+      break;
+    }
+  }
+  if (index < 0) {
+    return null;
+  }
+  let amount = amounts[index];
+  let remainingUsers = users.slice(0, index).concat(users.slice(index + 1));
+  let remainingAmounts = amounts.slice(0, index).concat(amounts.slice(index + 1));
+  if (remainingUsers.length == 0) {
+    store.remove("PendingDirectPayment", id);
+  } else {
+    pending.users = remainingUsers;
+    pending.amounts = remainingAmounts;
+    pending.save();
+  }
+  return amount;
+}
+
 export function handleBranchRequested(event: BranchRequested): void {
-  let fee = readBranchFee();
+  let paid = takeDirectPayment(event, event.params.user);
+  let fee: BigInt;
+  if (paid !== null) {
+    fee = paid!;
+  } else {
+    log.warning(
+      "[handleBranchRequested] no DirectPaymentProcessed for this transaction and user — using FeeConfig branchFee",
+      []
+    );
+    fee = readBranchFee();
+  }
   createActivity(event, event.params.user, "BRANCH", fee.neg());
 }
 
@@ -242,7 +296,17 @@ export function handleMetadataUpdateRequested(
   event: MetadataUpdateRequested
 ): void {
   // Encrypted payload means we don't know if it's rename or delete here
-  let fee = readMetadataUpdateFee();
+  let paid = takeDirectPayment(event, event.params.user);
+  let fee: BigInt;
+  if (paid !== null) {
+    fee = paid!;
+  } else {
+    log.warning(
+      "[handleMetadataUpdateRequested] no DirectPaymentProcessed for this transaction and user — using FeeConfig metadataUpdateFee",
+      []
+    );
+    fee = readMetadataUpdateFee();
+  }
   createActivity(event, event.params.user, "METADATA_UPDATE", fee.neg());
 }
 

@@ -1,6 +1,7 @@
 import { newMockEvent } from "matchstick-as";
 import { ethereum, Address, BigInt } from "@graphprotocol/graph-ts";
 import {
+  DirectPaymentProcessed,
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
@@ -108,6 +109,24 @@ export function createSpendingLimitCancelledEvent(
   event.parameters = new Array();
   event.parameters.push(
     new ethereum.EventParam("user", ethereum.Value.fromAddress(user))
+  );
+  return event;
+}
+
+export function createDirectPaymentProcessedEvent(
+  user: Address,
+  amount: BigInt
+): DirectPaymentProcessed {
+  let event = changetype<DirectPaymentProcessed>(newMockEvent());
+  event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam("user", ethereum.Value.fromAddress(user))
+  );
+  event.parameters.push(
+    new ethereum.EventParam(
+      "amount",
+      ethereum.Value.fromUnsignedBigInt(amount)
+    )
   );
   return event;
 }

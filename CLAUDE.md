@@ -91,7 +91,8 @@ Conversation (mutable)
 
 Payment (mutable) — keyed by escrowId
 SpendingLimit (mutable) — keyed by user address (one per user)
-Activity (immutable) — keyed by txHash-logIndex
+Activity (immutable) — keyed by txHash-logIndex (a cancel's CANCEL_RETURN row: txHash-logIndex-return)
+PendingDirectPayment (mutable, short-lived) — keyed by tx hash; escrow payment amounts waiting for their agent event
 
 ProtocolConfig (mutable singleton) — escrow address, treasury address, oracle encryption key
 FeeConfig (mutable singleton) — the four fees
@@ -105,10 +106,11 @@ OracleChange / TreasuryChange / FeeChange (immutable) — keyed by txHash-logInd
 - **Oracles are a set, not one address.** The agent authorizes oracles through a role (`ORACLE_ROLE`, OpenZeppelin `RoleGranted` / `RoleRevoked`), and a rotation is meant to add the new oracle before removing the old one; the set can also be empty. `Oracle.active` is the current answer (`oracles(where: { active: true })`); there is no single `oracleAddress`. The handlers ignore every role except `ORACLE_ROLE`.
 - **Current value plus change history.** `ProtocolConfig` and `FeeConfig` hold the current value only. Every oracle, key, treasury and fee change is also written as its own immutable record (`OracleChange`, `TreasuryChange`, `FeeChange`) with the value before (null for the first one seen), the value after, the block, the time and the transaction. `txFrom` on every record is the account that sent the transaction, which under a multisig is the account that executed it, not the multisig. `OracleChange.caller` (role records only) is the account that called the contract: the owner, or an oracle giving up its own role.
 - **`Conversation.lastMessageCreatedAt` is bumped on any state change** (new message, cancellation, refund, metadata update) so the sync service always picks up the change.
-- **`Activity` is the unified audit trail** — every billable user action creates one. `amount` is negative for costs and positive for refunds (in wei). Types: `CONVERSATION`, `BRANCH`, `CANCEL`, `REFUND`, `PLAN_UPDATE`, `PLAN_REVOKE`, `METADATA_UPDATE`.
+- **`Activity` is the unified audit trail** — every billable user action creates one. `amount` is negative for costs and positive for money returned to the user (in wei). Types: `CONVERSATION`, `BRANCH`, `METADATA_UPDATE`, `CANCEL`, `CANCEL_RETURN`, `REFUND`, `PLAN_UPDATE`, `PLAN_REVOKE`. A cancel writes two rows from the escrow's `PromptCancelled`: `CANCEL` for minus the cancellation fee (id `txHash-logIndex`) and `CANCEL_RETURN` for plus the escrowed amount handed back (the escrow returns it in full and takes the fee by a separate transfer to the treasury; id `txHash-logIndex-return`, written only when the `Payment` is indexed), so the prompt's `CONVERSATION` row, `CANCEL` and `CANCEL_RETURN` sum to minus the cancellation fee.
+- **Branch and metadata-update fees come from the escrow's `DirectPaymentProcessed(user, amount)`.** The escrow emits it before the agent's `BranchRequested` / `MetadataUpdateRequested` in the same transaction, and graph-node runs a block's events in log order across data sources. `handleDirectPaymentProcessed` appends the amount to `PendingDirectPayment` (id = tx hash, parallel `users` / `amounts` lists); the agent's handler takes and removes the first entry for its user, so two paid actions in one transaction each get their own amount, in order, and an entry for another user is left alone. The entity is removed once empty. With no entry for the transaction and user (an escrow that does not emit the event) the handler logs a warning and reads `FeeConfig` as below. With these contracts the event's amount is the same number as the fee in force (`FeeConfig` follows the fee events in log order), so what this gains is not a different amount but independence from `FeeConfig` being complete: a fee whose `*FeeUpdated` was never indexed (a start block after `initialize`) would otherwise be recorded as 0. Known limit: a `PendingDirectPayment` that no agent event takes is never removed and its payment gets no `Activity` row; the current contracts cannot produce one (the agent's call is in the same transaction, so a failure reverts both), but an escrow linked to an agent this subgraph does not index, or an upgrade that stops emitting the agent's event, would. Nothing reports it, so a non-empty `pendingDirectPayments` query is the sign to look for.
 - **`createActivity()` is duplicated** in both mapping files — this is intentional due to AssemblyScript's lack of cross-file shared helpers in The Graph's module system.
 - **A fee on `FeeConfig` is null until its own `*FeeUpdated` event is indexed.** Every reader must check for null before using one; the entity existing does not mean all four fees are known.
-- **Fees are read from the indexed `FeeConfig` entity** (populated by the `*FeeUpdated` events, including on `initialize`) when recording `Activity.amount` — **not** via `eth_calls`. This follows [The Graph's "avoid eth_calls" best practice](https://thegraph.com/docs/en/subgraphs/best-practices/avoid-eth-calls/) and avoids a graph-node↔Hardhat localnet incompatibility (graph-node sends both `input` and `data` in `eth_call`; Hardhat 2.22+ rejects the duplicate, stalling indexing). If `FeeConfig` is unset (no fee event seen yet) the amount falls back to 0.
+- **Other fees are read from the indexed `FeeConfig` entity** (populated by the `*FeeUpdated` events, including on `initialize`) when recording `Activity.amount`: the cancellation fee always (`PromptCancelled` carries no fee, so the `CANCEL` row still depends on `FeeConfig` and shows 0 when the cancellation fee is unknown), the branch and metadata-update fees only when no `DirectPaymentProcessed` was seen — **not** via `eth_calls`. This follows [The Graph's "avoid eth_calls" best practice](https://thegraph.com/docs/en/subgraphs/best-practices/avoid-eth-calls/) and avoids a graph-node↔Hardhat localnet incompatibility (graph-node sends both `input` and `data` in `eth_call`; Hardhat 2.22+ rejects the duplicate, stalling indexing). If `FeeConfig` is unset (no fee event seen yet) the amount falls back to 0.
 
 ### Testing
 
@@ -139,14 +141,15 @@ host. Contract tests run on a recording of Base Sepolia blocks 48212900-48216700
 | `PromptSubmitted` | EVMAIAgent | `handlePromptSubmitted` | Creates `PromptRequest` (id = `answerMessageId`) + `Message` |
 | `AnswerMessageAdded` | EVMAIAgent | `handleAnswerMessageAdded` | Updates `PromptRequest.isAnswered = true`; creates answer `Message` |
 | `PromptCancelled` | EVMAIAgent | `handlePromptCancelled` (Agent) | Sets `PromptRequest.isCancelled = true` |
-| `PromptCancelled` | EVMAIAgentEscrow | `handlePromptCancelled` (Escrow) | Creates `Activity` only — does NOT touch `PromptRequest` |
+| `PromptCancelled` | EVMAIAgentEscrow | `handlePromptCancelled` (Escrow) | Creates `CANCEL` and `CANCEL_RETURN` `Activity` rows; sets `Payment.status = CANCELLED` — does NOT touch `PromptRequest` |
+| `DirectPaymentProcessed` | EVMAIAgentEscrow | `handleDirectPaymentProcessed` | Queues the amount on `PendingDirectPayment` (id = tx hash) for the agent's branch / metadata handler |
 | `PaymentEscrowed` | EVMAIAgentEscrow | `handlePaymentEscrowed` | Creates `Payment` (id = `answerMessageId`) |
 | `PaymentFinalized` | EVMAIAgentEscrow | `handlePaymentFinalized` | Sets `PromptRequest.isAnswered = true`; finalises `Payment` |
 | `PaymentRefunded` | EVMAIAgentEscrow | `handlePaymentRefunded` | Sets `PromptRequest.isRefunded = true`; updates `Payment` |
 | `SpendingLimitSet` | EVMAIAgentEscrow | `handleSpendingLimitSet` | Upserts `SpendingLimit` (id = user address) |
 | `SpendingLimitCancelled` | EVMAIAgentEscrow | `handleSpendingLimitCancelled` | `store.remove('SpendingLimit', userAddress)` |
-| `BranchRequested` | EVMAIAgent | `handleBranchRequested` | Creates branched `Conversation`; reads `escrow.branchFee()` for Activity |
-| `MetadataUpdateRequested` | EVMAIAgent | `handleMetadataUpdateRequested` | Updates `Conversation` metadata; reads `escrow.metadataUpdateFee()` |
+| `BranchRequested` | EVMAIAgent | `handleBranchRequested` | `BRANCH` Activity for the queued `DirectPaymentProcessed` amount, else `FeeConfig.branchFee` |
+| `MetadataUpdateRequested` | EVMAIAgent | `handleMetadataUpdateRequested` | `METADATA_UPDATE` Activity for the queued `DirectPaymentProcessed` amount, else `FeeConfig.metadataUpdateFee` |
 
 ### `isDeleted` Invariant
 
@@ -178,7 +181,7 @@ bun run prepare:testnet && bun run codegen && bun run build
 
 **ABI Status (as of 2026-11-14 UTC):**
 - `abis/EVMAIAgent.json` and `abis/EVMAIAgentEscrow.json`: copied from `tokenized-ai-agent` `main` at `527bb6e`.
-- Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `DirectPaymentProcessed`, `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
+- Events in the ABIs that no handler indexes yet: `PromptRefunded` (agent), `RefundRecordFailed`, `RefundRecordRetried` (escrow). The OpenZeppelin housekeeping events (`Initialized`, `Upgraded`, `OwnershipTransferred`, `RoleAdminChanged`) are not indexed on purpose.
 - These ABIs are ahead of the Base Sepolia deployment until the contract upgrade. Every event the deployed contracts emit has the same signature in both, so the subgraph keeps indexing them (`OracleEncryptionKeyUpdated` changed signature, but no deployed contract has it); the new handlers see their first `RoleGranted` at the upgrade, when its migration grants the role to the oracle already in place (it does so only while that address is still stored). The encryption key appears only after an oracle publishes it with `setOracleEncryptionKey`, and is null again once that oracle loses its role. Until then a subgraph built from this code reports an empty oracle set and no encryption key.
 
 Stale ABIs will cause mismatched event fingerprints and silent indexing failures.

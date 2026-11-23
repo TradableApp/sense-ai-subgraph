@@ -179,10 +179,24 @@ type RegenerationRequest @entity(immutable: true) {
 
 # Immutable: Represents a single, discrete on-chain action
 type Activity @entity(immutable: true) {
-  id: ID! # txHash-logIndex
+  id: ID! # txHash-logIndex; a CANCEL_RETURN row is txHash-logIndex-return, beside its CANCEL row
   user: Bytes! # The user who performed the action
-  type: String! # e.g., "CONVERSATION", "RENAME", "BRANCH", "CANCEL", "REFUND", "PLAN_UPDATE", "PLAN_REVOKE"
-  amount: BigInt! # Can be negative (cost) or positive (refund). Wei.
+  # One of "CONVERSATION", "BRANCH", "METADATA_UPDATE", "CANCEL", "CANCEL_RETURN", "REFUND",
+  # "PLAN_UPDATE", "PLAN_REVOKE". A cancel writes two rows: CANCEL for minus the cancellation fee
+  # and CANCEL_RETURN for plus the escrowed amount handed back.
+  type: String!
+  amount: BigInt! # Negative for a cost, positive for money returned (CANCEL_RETURN, REFUND). Wei.
   timestamp: BigInt! # Block timestamp
   transactionHash: Bytes!
+}
+
+# Mutable, short-lived: the escrow's DirectPaymentProcessed amounts not yet paired with the agent's
+# BranchRequested / MetadataUpdateRequested of the same transaction. The escrow emits its event
+# first, so the agent's handler takes the first entry for its user. A list, not one value, so two
+# paid actions in one transaction (a contract wallet) each pair with their own amount, in order.
+# Removed once empty.
+type PendingDirectPayment @entity(immutable: false) {
+  id: ID! # transaction hash
+  users: [Bytes!]! # users[i] paid amounts[i]
+  amounts: [BigInt!]!
 }
