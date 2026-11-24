@@ -7,9 +7,8 @@ This subgraph indexes the **SenseAI** smart contracts (Agent & Escrow) on Base (
 
 ## 📋 Prerequisites
 
-- **Node.js** (v18+)
+- **Node.js** (the version in `.nvmrc`) and **Bun** (`bun install` brings the Graph CLI, a dependency)
 - **Docker Desktop** (Only required for Local Development)
-- **Graph CLI** (`bun add -g @graphprotocol/graph-cli`)
 
 ## ⚙️ Configuration
 
@@ -22,6 +21,8 @@ This project uses **Mustache** templates to manage multi-network deployments. DO
   - `config/localnet.json` (Local Hardhat)
   - `config/base-testnet.json` (Testnet)
   - `config/base-mainnet.json` (Production)
+
+Each config names one agent and one escrow. The subgraph keeps the fees and the treasury in single entities (`FeeConfig`, `ProtocolConfig`), so each agent and escrow pair gets a subgraph deployment of its own.
 
 ## 🚀 Deployment Workflows
 
@@ -77,16 +78,16 @@ Deploys to **The Graph Studio** using the slug `sense-ai-testnet`.
 4.  **Update Frontend:**
     Copy the **Query URL** output by the terminal and paste it into your dApp's `.env.testnet` file:
     ```env
-    VITE_GRAPH_API_URL="https://api.studio.thegraph.com/query/YOUR_ORG_ID/sense-ai-testnet/v0.0.1"
+    VITE_THE_GRAPH_API_URL="https://api.studio.thegraph.com/query/YOUR_ORG_ID/sense-ai-testnet/v0.0.1"
     ```
 
 ---
 
-### 3. Mainnet Deployment (Base / Virtual Chain)
+### 3. Mainnet Deployment (Base)
 
 Deploys the production version using the slug **`sense-ai`**.
 
-**Prerequisite:** Ensure `config/base-mainnet.json` contains the correct production contract addresses and start blocks. The committed file holds `0xYOUR_…` placeholders and `startBlock: 12345678` until the mainnet contracts exist, and `scripts/deploy-guard.js` refuses to deploy while any remain.
+**Prerequisite:** Ensure `config/base-mainnet.json` contains the correct production contract addresses and start blocks. The committed file holds `0xYOUR_…` placeholders and `startBlock: 12345678`; the mainnet pair's addresses and start block are filled on deploy day, and `scripts/deploy-guard.js` refuses to deploy while any placeholder remains.
 
 1.  **Create Subgraph:**
     Create a subgraph named **`sense-ai`** in the Studio (or your custom Graph Node).
