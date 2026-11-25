@@ -5,7 +5,7 @@ import {
   PaymentRefunded,
   SpendingLimitSet,
   SpendingLimitCancelled,
-  PromptCancelled,
+  CancellationSettled,
   DirectPaymentProcessed,
   PromptFeeUpdated,
   BranchFeeUpdated,
@@ -114,49 +114,34 @@ export function handlePaymentRefunded(event: PaymentRefunded): void {
   }
 }
 
-export function handlePromptCancelled(event: PromptCancelled): void {
-  // Read the cancellation fee from the indexed FeeConfig (populated by the *FeeUpdated
-  // events, incl. on initialize) instead of an eth_call — The Graph "avoid eth_calls"
-  // best practice, and an eth_call also breaks graph-node↔Hardhat on localnet. If
-  // FeeConfig is missing (initialize() fee events not yet indexed — tokenized-ai-agent
-  // #39) we warn and fall back to 0; Activity is immutable, so a wrong amount can't be patched.
-  let fees = FeeConfig.load("singleton");
-  let cancellationFee = BigInt.fromI32(0);
-  if (fees == null || fees.cancellationFee === null) {
-    log.warning(
-      "[handlePromptCancelled] FeeConfig cancellationFee missing — defaulting to 0",
-      []
-    );
-  } else {
-    cancellationFee = fees.cancellationFee!;
-  }
+// A cancel is filed from the escrow's own event, which carries the user, the fee charged and the
+// amount sent back: no fee setting and no stored Payment is needed to know them. The fee comes
+// out of the escrowed amount. The rows keep the shape they had: CANCEL is minus the fee, and
+// CANCEL_RETURN is plus the whole escrowed amount released by the cancel (the fee and what was
+// sent back), so the prompt's CONVERSATION row, CANCEL and CANCEL_RETURN sum to minus the fee,
+// which is what the cancel cost. The agent's PromptCancelled, in the same transaction, marks the
+// PromptRequest.
+export function handleCancellationSettled(event: CancellationSettled): void {
+  createActivity(event, event.params.user, "CANCEL", event.params.fee.neg());
+  createActivity(
+    event,
+    event.params.user,
+    "CANCEL_RETURN",
+    event.params.fee.plus(event.params.returned),
+    "-return"
+  );
 
-  createActivity(event, event.params.user, "CANCEL", cancellationFee.neg());
-
-  // The escrow returns the amount and closes its record on a cancel, and its id is the answer
-  // message id. Left at PENDING, the payment would be listed as stuck and offered a refund the
-  // contract refuses.
-  let payment = Payment.load(event.params.answerMessageId.toString());
+  // The escrow closes its record on a cancel, and its id is the answer message id. Left at
+  // PENDING, the payment would be listed as stuck and offered a refund the contract refuses.
+  let payment = Payment.load(event.params.escrowId.toString());
   if (payment) {
     payment.status = "CANCELLED";
     payment.finalizedAt = event.block.timestamp;
     payment.save();
-
-    // The amount handed back is its own row, so the prompt's CONVERSATION row, this CANCEL row
-    // and the return sum to what the cancel cost: minus the cancellation fee. The escrow's
-    // cancelPrompt hands back payment.amount in full and takes the fee by a separate transfer
-    // from the user to the treasury; the fee is not deducted from this return.
-    createActivity(
-      event,
-      event.params.user,
-      "CANCEL_RETURN",
-      payment.amount,
-      "-return"
-    );
   } else {
     log.warning(
-      "[handlePromptCancelled] no Payment indexed for escrow {} — returned amount not recorded",
-      [event.params.answerMessageId.toString()]
+      "[handleCancellationSettled] no Payment indexed for escrow {}",
+      [event.params.escrowId.toString()]
     );
   }
 }
@@ -166,8 +151,7 @@ export function handlePromptCancelled(event: PromptCancelled): void {
 // agent's handler records the amount this event carries. With these contracts that is the same
 // number as the fee in force (FeeConfig follows the fee events in log order); what is gained is
 // that the amount no longer depends on FeeConfig being complete, where a fee whose *FeeUpdated was
-// never indexed (a start block after initialize) is recorded as 0. The CANCEL row's fee still
-// comes from FeeConfig (see handlePromptCancelled): PromptCancelled carries no fee.
+// never indexed (a start block after initialize) is recorded as 0.
 export function handleDirectPaymentProcessed(
   event: DirectPaymentProcessed
 ): void {

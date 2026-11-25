@@ -107,8 +107,8 @@ dataSources:
           handler: handleSpendingLimitSet
         - event: SpendingLimitCancelled(indexed address)
           handler: handleSpendingLimitCancelled
-        - event: PromptCancelled(indexed address,indexed uint256)
-          handler: handlePromptCancelled
+        - event: CancellationSettled(indexed uint256,indexed address,uint256,uint256)
+          handler: handleCancellationSettled
         - event: DirectPaymentProcessed(indexed address,indexed uint256)
           handler: handleDirectPaymentProcessed
         - event: PromptFeeUpdated(indexed uint256)

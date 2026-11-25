@@ -358,48 +358,49 @@ describe("SpendingLimit — upsert behaviour", () => {
 // ---------------------------------------------------------------------------
 // Escrow CancellationSettled — the cancel's rows and the payment, from the event's own amounts
 // ---------------------------------------------------------------------------
-describe("handleCancellationSettled (Escrow)", () => {
-  // The escrow held AMOUNT (1000000000000000000) and a cancel cost 300 of it.
-  const FEE = "300";
-  // 1000000000000000000 - 300
-  const RETURNED = "999999999999999700";
+// The escrow held AMOUNT (1000000000000000000) and a cancel cost 300 of it.
+const CANCEL_FEE = "300";
+// 1000000000000000000 - 300
+const CANCEL_RETURNED = "999999999999999700";
 
+function seedEscrowed(): void {
+  let escrowEvent = createPaymentEscrowedEvent(
+    BigInt.fromString(ANSWER_MSG_ID),
+    Address.fromString(USER_ADDRESS),
+    BigInt.fromString(AMOUNT)
+  );
+  escrowEvent.logIndex = BigInt.fromI32(1);
+  handlePaymentEscrowed(escrowEvent);
+}
+
+function settleCancel(fee: string, returned: string): string {
+  let event = createCancellationSettledEvent(
+    BigInt.fromString(ANSWER_MSG_ID),
+    Address.fromString(USER_ADDRESS),
+    BigInt.fromString(fee),
+    BigInt.fromString(returned)
+  );
+  event.logIndex = BigInt.fromI32(2);
+  handleCancellationSettled(event);
+  return event.transaction.hash.toHexString() + "-2";
+}
+
+describe("handleCancellationSettled (Escrow)", () => {
   afterEach(() => {
     clearStore();
   });
 
-  function escrowed(): void {
-    let escrowEvent = createPaymentEscrowedEvent(
-      BigInt.fromString(ANSWER_MSG_ID),
-      Address.fromString(USER_ADDRESS),
-      BigInt.fromString(AMOUNT)
-    );
-    escrowEvent.logIndex = BigInt.fromI32(1);
-    handlePaymentEscrowed(escrowEvent);
-  }
-
-  function settled(fee: string, returned: string): string {
-    let event = createCancellationSettledEvent(
-      BigInt.fromString(ANSWER_MSG_ID),
-      Address.fromString(USER_ADDRESS),
-      BigInt.fromString(fee),
-      BigInt.fromString(returned)
-    );
-    event.logIndex = BigInt.fromI32(2);
-    handleCancellationSettled(event);
-    return event.transaction.hash.toHexString() + "-2";
-  }
-
-  test("records CANCEL for minus the fee and CANCEL_RETURN for plus what was returned", () => {
+  test("records CANCEL for minus the fee and CANCEL_RETURN for plus the escrowed amount released", () => {
     seedConversationAndRequest();
-    escrowed();
-    let cancelId = settled(FEE, RETURNED);
+    seedEscrowed();
+    let cancelId = settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
     assert.fieldEquals("Activity", cancelId, "type", "CANCEL");
-    assert.fieldEquals("Activity", cancelId, "amount", "-" + FEE);
+    assert.fieldEquals("Activity", cancelId, "amount", "-" + CANCEL_FEE);
     assert.fieldEquals("Activity", cancelId, "user", USER_ADDRESS);
     assert.fieldEquals("Activity", cancelId + "-return", "type", "CANCEL_RETURN");
-    assert.fieldEquals("Activity", cancelId + "-return", "amount", RETURNED);
+    // 300 (fee) + 999999999999999700 (sent back) = 1000000000000000000, the amount escrowed.
+    assert.fieldEquals("Activity", cancelId + "-return", "amount", AMOUNT);
     assert.fieldEquals("Activity", cancelId + "-return", "user", USER_ADDRESS);
     // CONVERSATION + CANCEL + CANCEL_RETURN.
     assert.entityCount("Activity", 3);
@@ -411,16 +412,16 @@ describe("handleCancellationSettled (Escrow)", () => {
     // A fee setting of 5 that the event does not agree with: the event is what was charged.
     fc.cancellationFee = BigInt.fromI32(5);
     fc.save();
-    escrowed();
-    let cancelId = settled(FEE, RETURNED);
+    seedEscrowed();
+    let cancelId = settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
-    assert.fieldEquals("Activity", cancelId, "amount", "-" + FEE);
+    assert.fieldEquals("Activity", cancelId, "amount", "-" + CANCEL_FEE);
   });
 
-  test("CONVERSATION and CANCEL_RETURN sum to minus the fee; the CANCEL row names that fee", () => {
+  test("CONVERSATION, CANCEL and CANCEL_RETURN sum to minus the fee", () => {
     seedConversationAndRequest();
-    escrowed();
-    let cancelId = settled(FEE, RETURNED);
+    seedEscrowed();
+    let cancelId = settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
     let hash = cancelId.slice(0, cancelId.length - 2);
     let conversation = Activity.load(hash + "-1");
@@ -430,28 +431,27 @@ describe("handleCancellationSettled (Escrow)", () => {
     assert.assertNotNull(cancel);
     assert.assertNotNull(returned);
 
-    // The fee came out of the escrowed amount, so what moved is the prompt's payment and the
-    // return: -1000000000000000000 + 999999999999999700 = -300, the fee the CANCEL row shows.
-    let moved = conversation!.amount.plus(returned!.amount);
-    assert.stringEquals(moved.toString(), "-" + FEE);
-    assert.stringEquals(cancel!.amount.toString(), "-" + FEE);
+    // -1000000000000000000 (prompt paid) - 300 (fee) + 1000000000000000000 (released) = -300.
+    let sum = conversation!.amount.plus(cancel!.amount).plus(returned!.amount);
+    assert.stringEquals(sum.toString(), "-" + CANCEL_FEE);
   });
 
-  test("a fee that took the whole escrowed amount writes a return row of 0", () => {
+  test("a fee that took the whole escrowed amount still sums to minus that fee", () => {
     seedConversationAndRequest();
-    escrowed();
-    let cancelId = settled(AMOUNT, "0");
+    seedEscrowed();
+    let cancelId = settleCancel(AMOUNT, "0");
 
     assert.fieldEquals("Activity", cancelId, "amount", "-" + AMOUNT);
-    assert.fieldEquals("Activity", cancelId + "-return", "amount", "0");
+    // Fee 1000000000000000000 + 0 sent back.
+    assert.fieldEquals("Activity", cancelId + "-return", "amount", AMOUNT);
   });
 
   // The escrow closes its record on a cancel. A payment left at PENDING is listed as stuck and
   // later offered a refund the contract refuses.
   test("the Payment is CANCELLED, with its amount and user left as they were", () => {
     seedConversationAndRequest();
-    escrowed();
-    settled(FEE, RETURNED);
+    seedEscrowed();
+    settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
     assert.fieldEquals("Payment", ANSWER_MSG_ID, "status", "CANCELLED");
     assert.fieldEquals("Payment", ANSWER_MSG_ID, "finalizedAt", "1");
@@ -461,17 +461,17 @@ describe("handleCancellationSettled (Escrow)", () => {
 
   test("with no Payment indexed it creates none and still records both rows", () => {
     seedConversationAndRequest();
-    let cancelId = settled(FEE, RETURNED);
+    let cancelId = settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
     assert.entityCount("Payment", 0);
     assert.fieldEquals("Activity", cancelId, "type", "CANCEL");
-    assert.fieldEquals("Activity", cancelId + "-return", "amount", RETURNED);
+    assert.fieldEquals("Activity", cancelId + "-return", "amount", AMOUNT);
   });
 
   test("it does not touch the PromptRequest, which the agent's event marks", () => {
     seedConversationAndRequest();
-    escrowed();
-    settled(FEE, RETURNED);
+    seedEscrowed();
+    settleCancel(CANCEL_FEE, CANCEL_RETURNED);
 
     assert.fieldEquals("PromptRequest", ANSWER_MSG_ID, "isCancelled", "false");
   });
