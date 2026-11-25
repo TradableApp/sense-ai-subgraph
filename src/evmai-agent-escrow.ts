@@ -140,7 +140,7 @@ export function handleCancellationSettled(event: CancellationSettled): void {
     payment.save();
   } else {
     log.warning(
-      "[handleCancellationSettled] no Payment indexed for escrow {}",
+      "[handleCancellationSettled] no Payment indexed for escrow {}: its status is not set to CANCELLED",
       [event.params.escrowId.toString()]
     );
   }
