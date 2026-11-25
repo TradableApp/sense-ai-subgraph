@@ -1,11 +1,11 @@
 import { newMockEvent } from "matchstick-as";
 import { ethereum, Address, BigInt } from "@graphprotocol/graph-ts";
 import {
+  CancellationSettled,
   DirectPaymentProcessed,
   PaymentEscrowed,
   PaymentFinalized,
   PaymentRefunded,
-  PromptCancelled,
   SpendingLimitSet,
   SpendingLimitCancelled,
 } from "../generated/EVMAIAgentEscrow/EVMAIAgentEscrow";
@@ -59,19 +59,30 @@ export function createPaymentRefundedEvent(escrowId: BigInt): PaymentRefunded {
   return event;
 }
 
-export function createEscrowPromptCancelledEvent(
+export function createCancellationSettledEvent(
+  escrowId: BigInt,
   user: Address,
-  answerMessageId: BigInt
-): PromptCancelled {
-  let event = changetype<PromptCancelled>(newMockEvent());
+  fee: BigInt,
+  returned: BigInt
+): CancellationSettled {
+  let event = changetype<CancellationSettled>(newMockEvent());
   event.parameters = new Array();
+  event.parameters.push(
+    new ethereum.EventParam(
+      "escrowId",
+      ethereum.Value.fromUnsignedBigInt(escrowId)
+    )
+  );
   event.parameters.push(
     new ethereum.EventParam("user", ethereum.Value.fromAddress(user))
   );
   event.parameters.push(
+    new ethereum.EventParam("fee", ethereum.Value.fromUnsignedBigInt(fee))
+  );
+  event.parameters.push(
     new ethereum.EventParam(
-      "answerMessageId",
-      ethereum.Value.fromUnsignedBigInt(answerMessageId)
+      "returned",
+      ethereum.Value.fromUnsignedBigInt(returned)
     )
   );
   return event;
