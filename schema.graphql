@@ -183,9 +183,9 @@ type Activity @entity(immutable: true) {
   user: Bytes! # The user who performed the action
   # One of "CONVERSATION", "BRANCH", "METADATA_UPDATE", "CANCEL", "CANCEL_RETURN", "REFUND",
   # "PLAN_UPDATE", "PLAN_REVOKE". A cancel writes two rows: CANCEL for minus the cancellation fee
-  # and CANCEL_RETURN for plus the escrowed amount handed back.
+  # and CANCEL_RETURN for plus the escrowed amount it released (the fee and what was sent back).
   type: String!
-  amount: BigInt! # Negative for a cost, positive for money returned (CANCEL_RETURN, REFUND). Wei.
+  amount: BigInt! # Negative for a cost; positive for money returned (REFUND) or released by a cancel (CANCEL_RETURN: the fee plus what reached the wallet). Wei.
   timestamp: BigInt! # Block timestamp
   transactionHash: Bytes!
 }
