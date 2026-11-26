@@ -1,0 +1,74 @@
+# Advisories osv-scanner reports in this directory's bun.lock that no bump or Bun override here can clear.
+# Each entry names the copy, why it cannot move, and where it runs. Every package in this lockfile is
+# tooling (graph-cli, its test runner and their dependencies) that runs on a developer's machine or in
+# CI; what is deployed is the WASM and manifest it builds. Review each one before its date.
+
+[[IgnoredVulns]]
+id = "GHSA-h39j-r5qq-r9mm"
+effectiveUntil = 2027-02-28
+reason = "decompress 4.2.1: required as ^4.2.1 by @graphprotocol/graph-cli; no fixed version is published. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-hrh2-vp3x-79xf"
+effectiveUntil = 2027-02-28
+reason = "decompress 4.2.1: required as ^4.2.1 by @graphprotocol/graph-cli; no fixed version is published. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-jwp9-9v96-94mx"
+effectiveUntil = 2027-02-28
+reason = "decompress 4.2.1: required as ^4.2.1 by @graphprotocol/graph-cli; no fixed version is published. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-mp2f-45pm-3cg9"
+effectiveUntil = 2027-02-28
+reason = "decompress 4.2.1: required as ^4.2.1 by @graphprotocol/graph-cli; no fixed version is published. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-ghr5-ch3p-vcr6"
+effectiveUntil = 2027-02-28
+reason = "ejs 3.1.8: pinned exactly by gluegun under graph-cli. Fixed in 3.1.10, but a Bun override sets every copy of a package, and this tree also holds ejs 6 under @oclif/plugin-not-found. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-5j98-mcp5-4vw2"
+effectiveUntil = 2027-02-28
+reason = "glob 11.0.3: pinned exactly by @graphprotocol/graph-cli 0.98.1. Fixed in 11.1.0, but a Bun override sets every copy of a package, and this tree also holds glob 7 under rimraf. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-3g3m-2fjr-6pw4"
+effectiveUntil = 2027-02-28
+reason = "glob 11.0.3: pinned exactly by @graphprotocol/graph-cli 0.98.1; fixed only in glob 14. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-g3hv-75wg-m249"
+effectiveUntil = 2027-02-28
+reason = "minimatch 10.2.6, minimatch 9.0.9: fixed only in minimatch 11; required as ^9 and ^10 by glob and @oclif/core under graph-cli. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-528h-pc64-c93x"
+effectiveUntil = 2027-02-28
+reason = "stream-json 1.9.1: required as ^1.9.1 by jayson under graph-cli; fixed only in 3.x. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-hqr4-qq8f-hg3x"
+effectiveUntil = 2027-02-28
+reason = "stream-json 1.9.1: required as ^1.9.1 by jayson under graph-cli; fixed only in 3.x. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-mjw6-4jj6-33hc"
+effectiveUntil = 2027-02-28
+reason = "stream-json 1.9.1: required as ^1.9.1 by jayson under graph-cli; fixed only in 3.x. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+effectiveUntil = 2027-02-28
+reason = "uuid 8.3.2: required as ^8.3.2 by jayson under graph-cli; fixed only in 11.1.1. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-48c2-rrv3-qjmp"
+effectiveUntil = 2027-02-28
+reason = "yaml 2.8.1: pinned exactly by @graphprotocol/graph-cli 0.98.1. Fixed in 2.8.3, but a Bun override sets every copy of a package, and this tree also holds yaml 1 under cosmiconfig. graph-cli tooling only, run on a developer's machine or in CI."
+
+[[IgnoredVulns]]
+id = "GHSA-mrhx-c7xc-m3w5"
+effectiveUntil = 2027-02-28
+reason = "zod 3.25.76: required as ^3.21.4 by web3-validator under graph-cli; no 3.x fix is published (fixed in 4.6.6). graph-cli tooling only, run on a developer's machine or in CI."
