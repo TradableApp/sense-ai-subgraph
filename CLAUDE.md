@@ -141,7 +141,8 @@ host. Contract tests run on a recording of Base Sepolia blocks 48212900-48216700
 
 | Event | Contract | Handler | Key Side Effect |
 |-------|----------|---------|----------------|
-| `ConversationAdded` | EVMAIAgent | `handleConversationAdded` | Creates `Conversation` entity |
+| `ConversationAdded` | EVMAIAgent | `handleConversationAdded` | Creates `Conversation` entity; changes nothing when it already exists |
+| `ConversationBranched` | EVMAIAgent | `handleConversationBranched` | Creates the branch's `Conversation` (`branchedFrom` set); changes nothing when it already exists |
 | `PromptSubmitted` | EVMAIAgent | `handlePromptSubmitted` | Creates `PromptRequest` (id = `answerMessageId`) + `Message` |
 | `AnswerMessageAdded` | EVMAIAgent | `handleAnswerMessageAdded` | Updates `PromptRequest.isAnswered = true`; creates answer `Message` |
 | `PromptCancelled` | EVMAIAgent | `handlePromptCancelled` (Agent) | Sets `PromptRequest.isCancelled = true` |
