@@ -33,6 +33,7 @@ import {
   createMetadataUpdateRequestedEvent,
 } from "./evmai-agent-utils";
 import { FeeConfig } from "../generated/schema";
+import { ConversationBranched } from "../generated/EVMAIAgent/EVMAIAgent";
 
 // Seeds the singleton FeeConfig (all fees 0) so a handler can read the fee it charges
 // from the indexed entity instead of an eth_call. Callers set the specific fee + save().
@@ -346,6 +347,82 @@ describe("EVMAIAgent — handleConversationBranched", () => {
 
   test("branched Conversation isDeleted is false", () => {
     assert.fieldEquals("Conversation", BRANCH_CONV_ID, "isDeleted", "false");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ConversationBranched emitted again for the same new conversation id
+// ---------------------------------------------------------------------------
+const REPLAY_ORIGINAL_CONV_ID = "1";
+const REPLAY_BRANCH_CONV_ID = "2";
+const REPLAY_BRANCH_MSG_ID = "50";
+const REPLAY_BRANCH_CID = "bafybranch";
+const REPLAY_BRANCH_META_CID = "bafybranchmeta";
+const REPLAY_RENAMED_META_CID = "bafyrenamedmeta";
+
+function branchEventAt(timestamp: i32, blockNumber: i32): ConversationBranched {
+  let event = createConversationBranchedEvent(
+    Address.fromString(USER_ADDRESS),
+    BigInt.fromString(REPLAY_BRANCH_CONV_ID),
+    BigInt.fromString(REPLAY_ORIGINAL_CONV_ID),
+    BigInt.fromString(REPLAY_BRANCH_MSG_ID),
+    REPLAY_BRANCH_CID,
+    REPLAY_BRANCH_META_CID
+  );
+  event.block.timestamp = BigInt.fromI32(timestamp);
+  event.block.number = BigInt.fromI32(blockNumber);
+  return event;
+}
+
+describe("EVMAIAgent — handleConversationBranched for a branch already indexed", () => {
+  afterEach(() => {
+    clearStore();
+  });
+
+  test("the first event creates the branch with every field", () => {
+    seedConversation();
+    handleConversationBranched(branchEventAt(1000, 10));
+
+    assert.entityCount("Conversation", 2);
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "owner", USER_ADDRESS);
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "conversationId", REPLAY_BRANCH_CONV_ID);
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "conversationCID", REPLAY_BRANCH_CID);
+    assert.fieldEquals(
+      "Conversation",
+      REPLAY_BRANCH_CONV_ID,
+      "conversationMetadataCID",
+      REPLAY_BRANCH_META_CID
+    );
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "lastMessageCreatedAt", "1000");
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "createdAtBlock", "10");
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "isDeleted", "false");
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "branchedFrom", REPLAY_ORIGINAL_CONV_ID);
+  });
+
+  test("a second event leaves the branch as the metadata update left it", () => {
+    seedConversation();
+    handleConversationBranched(branchEventAt(1000, 10));
+
+    let update = createConversationMetadataUpdatedEvent(
+      BigInt.fromString(REPLAY_BRANCH_CONV_ID),
+      REPLAY_RENAMED_META_CID
+    );
+    update.block.timestamp = BigInt.fromI32(2000);
+    update.block.number = BigInt.fromI32(20);
+    handleConversationMetadataUpdated(update);
+
+    handleConversationBranched(branchEventAt(3000, 30));
+
+    assert.entityCount("Conversation", 2);
+    assert.fieldEquals(
+      "Conversation",
+      REPLAY_BRANCH_CONV_ID,
+      "conversationMetadataCID",
+      REPLAY_RENAMED_META_CID
+    );
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "isDeleted", "false");
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "lastMessageCreatedAt", "2000");
+    assert.fieldEquals("Conversation", REPLAY_BRANCH_CONV_ID, "createdAtBlock", "10");
   });
 });
 
