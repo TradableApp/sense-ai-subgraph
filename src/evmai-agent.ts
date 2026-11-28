@@ -98,7 +98,14 @@ export function handleConversationAdded(event: ConversationAdded): void {
 }
 
 export function handleConversationBranched(event: ConversationBranched): void {
-  let entity = new Conversation(event.params.newConversationId.toString());
+  // The event can be emitted again for a branch already indexed; the record it created
+  // then stays as later events left it (its metadata CID among them).
+  let id = event.params.newConversationId.toString();
+  if (Conversation.load(id) != null) {
+    return;
+  }
+
+  let entity = new Conversation(id);
   entity.owner = event.params.user;
   entity.conversationId = event.params.newConversationId;
   entity.conversationCID = event.params.conversationCID;
