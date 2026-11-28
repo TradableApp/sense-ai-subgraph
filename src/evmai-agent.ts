@@ -86,7 +86,14 @@ function readMetadataUpdateFee(): BigInt {
 }
 
 export function handleConversationAdded(event: ConversationAdded): void {
-  let entity = new Conversation(event.params.conversationId.toString());
+  // The event can be emitted again for a conversation already indexed (a later answer that
+  // carries a conversation CID); the record it created then stays as later events left it.
+  let id = event.params.conversationId.toString();
+  if (Conversation.load(id) != null) {
+    return;
+  }
+
+  let entity = new Conversation(id);
   entity.owner = event.params.user;
   entity.conversationId = event.params.conversationId;
   entity.conversationCID = event.params.conversationCID;
