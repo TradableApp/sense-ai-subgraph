@@ -114,6 +114,61 @@ describe("EVMAIAgent — Conversation creation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ConversationAdded emitted again for a conversation already indexed
+// ---------------------------------------------------------------------------
+const READDED_CONV_CID = "bafyreaddedconv";
+const READDED_META_CID = "bafyreaddedmeta";
+const UPDATED_META_CID = "bafyupdatedmeta";
+
+describe("EVMAIAgent — handleConversationAdded for a conversation already indexed", () => {
+  afterEach(() => {
+    clearStore();
+  });
+
+  test("a second event leaves the conversation as the metadata update left it", () => {
+    let first = createConversationAddedEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(CONV_ID),
+      CONV_CID,
+      META_CID
+    );
+    first.block.timestamp = BigInt.fromI32(1000);
+    first.block.number = BigInt.fromI32(10);
+    handleConversationAdded(first);
+
+    let update = createConversationMetadataUpdatedEvent(
+      BigInt.fromString(CONV_ID),
+      UPDATED_META_CID
+    );
+    update.block.timestamp = BigInt.fromI32(2000);
+    update.block.number = BigInt.fromI32(20);
+    handleConversationMetadataUpdated(update);
+
+    let second = createConversationAddedEvent(
+      Address.fromString(USER_ADDRESS),
+      BigInt.fromString(CONV_ID),
+      READDED_CONV_CID,
+      READDED_META_CID
+    );
+    second.block.timestamp = BigInt.fromI32(3000);
+    second.block.number = BigInt.fromI32(30);
+    handleConversationAdded(second);
+
+    assert.entityCount("Conversation", 1);
+    assert.fieldEquals("Conversation", CONV_ID, "conversationCID", CONV_CID);
+    assert.fieldEquals(
+      "Conversation",
+      CONV_ID,
+      "conversationMetadataCID",
+      UPDATED_META_CID
+    );
+    assert.fieldEquals("Conversation", CONV_ID, "isDeleted", "false");
+    assert.fieldEquals("Conversation", CONV_ID, "lastMessageCreatedAt", "2000");
+    assert.fieldEquals("Conversation", CONV_ID, "createdAtBlock", "10");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // PromptSubmitted — entity field verification
 // ---------------------------------------------------------------------------
 describe("EVMAIAgent — handlePromptSubmitted creates PromptRequest", () => {
